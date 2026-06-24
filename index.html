@@ -298,9 +298,9 @@
                         Preset Beats</span>
                     <div class="grid grid-cols-2 gap-1">
                         <button id="m-preset-global" onclick="selectPreset('global')"
-                            class="py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-navy bg-brand-navy text-[#faf8f5]">Global</button>
+                            class="py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-navy bg-brand-navy text-[#faf8f5]">Global View</button>
                         <button id="m-preset-factories" onclick="selectPreset('factories')"
-                            class="py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-borderMuted text-brand-navy">Factories</button>
+                            class="py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-borderMuted text-brand-navy">Talent Factories</button>
                     </div>
                 </div>
 
@@ -470,8 +470,15 @@
                 zoom: 1.5,
                 minZoom: 1.1,
                 maxZoom: 10,
-                cooperativeGestures: true // Mobile scroll protection
+                cooperativeGestures: false, // Allow single finger movement on mobile
+                dragRotate: false,          // Disable map rotation via dragging
+                touchPitch: false           // Disable pinch-to-pitch gesture
             });
+
+            // Disable pinch-to-rotate gesture on mobile, retaining pinch-to-zoom
+            if (map.touchZoomRotate) {
+                map.touchZoomRotate.disableRotation();
+            }
 
             // Controls
             map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
