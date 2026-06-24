@@ -106,7 +106,9 @@
                 display: block !important;
             }
 
-            #sidebar-wrapper {
+            #sidebar-wrapper,
+            #sidebar-collapse-btn,
+            #sidebar-expand-btn {
                 display: none !important;
             }
 
@@ -146,6 +148,39 @@
 
         .maplibregl-ctrl-compass {
             display: none !important;
+        }
+
+        /* On-map endpoint labels (flag + name) for the active selection */
+        .sel-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+            font-size: 10.5px;
+            font-weight: 600;
+            line-height: 1;
+            padding: 3px 7px;
+            border-radius: 999px;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+            pointer-events: none;
+            transform: translateY(-10px);
+        }
+
+        .sel-label-origin {
+            background: #fff;
+            color: #b35a38;
+            border: 1px solid #e6c3b6;
+        }
+
+        .sel-label-dest {
+            background: #0f172a;
+            color: #faf8f5;
+            border: 1px solid #0f172a;
+        }
+
+        .sel-label img {
+            border-radius: 2px;
+            box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1);
         }
     </style>
 </head>
@@ -259,9 +294,16 @@
 
             <div id="map" class="w-full h-full"></div>
 
-            <!-- MOBILE SEARCH OVERLAY (Floating at Top) -->
+            <!-- Floating plain-language caption for the active selection -->
+            <div id="map-caption"
+                class="hidden absolute z-30 left-1/2 -translate-x-1/2 top-[64px] desktop:top-5 max-w-[90%] desktop:max-w-lg
+                       bg-[#fcfbfa]/95 backdrop-blur-md border border-[#e8e4db] rounded-full shadow-lg
+                       px-4 py-2 text-[11px] desktop:text-xs text-brand-navy text-center leading-snug pointer-events-none">
+            </div>
+
+            <!-- MOBILE SEARCH OVERLAY (Floating at Top) — right inset leaves room for zoom controls -->
             <div
-                class="mobile-only absolute top-3 left-3 right-3 z-40 bg-[#fcfbfa]/90 backdrop-blur-md rounded-xl shadow-lg border border-[#e8e4db] px-3 py-2">
+                class="mobile-only absolute top-3 left-16 right-16 z-40 bg-[#fcfbfa]/90 backdrop-blur-md rounded-xl shadow-lg border border-[#e8e4db] px-3 py-2">
                 <div class="flex items-center gap-2">
                     <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2.5"
                         viewBox="0 0 24 24">
@@ -288,11 +330,12 @@
             <!-- Drawer pull handle (drag up/down to resize, tap to cycle) -->
             <div id="mobile-drawer-handle"
                 class="w-full py-3 flex flex-col justify-center items-center select-none group"
-                style="touch-action: none; cursor: grab;"
-                role="slider" tabindex="0"
-                aria-label="Resize panel — drag up or down, or use arrow keys"
-                aria-valuemin="12" aria-valuemax="92" aria-valuenow="15">
-                <div class="w-10 h-1.5 bg-[#cbd5e1] group-hover:bg-slate-400 group-active:bg-slate-400 rounded-full transition-colors"></div>
+                style="touch-action: none; cursor: grab;" role="slider" tabindex="0"
+                aria-label="Resize panel — drag up or down, or use arrow keys" aria-valuemin="12" aria-valuemax="92"
+                aria-valuenow="15">
+                <div
+                    class="w-10 h-1.5 bg-[#cbd5e1] group-hover:bg-slate-400 group-active:bg-slate-400 rounded-full transition-colors">
+                </div>
             </div>
             <!-- Scrollable content area -->
             <div id="mobile-drawer-content" class="px-5 pb-6 overflow-y-auto h-[calc(100%-30px)] no-scrollbar">
@@ -303,9 +346,11 @@
                         Preset Beats</span>
                     <div class="grid grid-cols-2 gap-1">
                         <button id="m-preset-global" onclick="selectPreset('global')"
-                            class="py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-navy bg-brand-navy text-[#faf8f5]">Global View</button>
+                            class="py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-navy bg-brand-navy text-[#faf8f5]">Global
+                            View</button>
                         <button id="m-preset-factories" onclick="selectPreset('factories')"
-                            class="py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-borderMuted text-brand-navy">Talent Factories</button>
+                            class="py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-borderMuted text-brand-navy">Talent
+                            Factories</button>
                     </div>
                 </div>
 
@@ -382,7 +427,7 @@
 
             const townNotSpecifiedRegex = new RegExp(`^${countryTrimmed}\\s*\\(town not specified\\)$`, 'i');
             if (townNotSpecifiedRegex.test(clean)) {
-                return "Town not specified";
+                return '';
             }
 
             const escapedCountry = countryTrimmed.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -398,48 +443,70 @@
             return clean;
         }
 
-        // Geodesic Great Circle Line Interpolation
+        // 2D Bezier Curve Line Interpolation (prevents antimeridian jumps)
         function interpolateGreatCircle(p1, p2, segments = 60) {
-            let lng1 = p1[0];
-            let lat1 = p1[1] * Math.PI / 180;
-            let lng2 = p2[0];
-            let lat2 = p2[1] * Math.PI / 180;
+            const lng1 = p1[0];
+            const lat1 = p1[1];
+            const lng2 = p2[0];
+            const lat2 = p2[1];
 
-            // Handle antimeridian wrap: choose shortest path
-            if (Math.abs(lng2 - lng1) > 180) {
-                if (lng2 > lng1) {
-                    lng2 -= 360;
-                } else {
-                    lng2 += 360;
-                }
+            const dx = lng2 - lng1;
+            const dy = lat2 - lat1;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            if (dist === 0) return [[lng1, lat1]];
+
+            // 15% curvature offset
+            const offset = dist * 0.15; 
+            const midLng = (lng1 + lng2) / 2;
+            const midLat = (lat1 + lat2) / 2;
+            
+            let nx = -dy / dist;
+            let ny = dx / dist;
+            
+            // Ensure the curve always bows "up" towards the north visually
+            if (ny < 0) {
+                nx = -nx;
+                ny = -ny;
             }
-
-            const lng1Rad = lng1 * Math.PI / 180;
-            const lng2Rad = lng2 * Math.PI / 180;
-
-            const d = 2 * Math.asin(Math.sqrt(
-                Math.pow(Math.sin((lat1 - lat2) / 2), 2) +
-                Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin((lng1Rad - lng2Rad) / 2), 2)
-            ));
-
-            if (d === 0) return [[p1[0], p1[1]]];
+            
+            const ctrlLng = midLng + nx * offset;
+            const ctrlLat = midLat + ny * offset;
 
             const coords = [];
             for (let i = 0; i <= segments; i++) {
-                const f = i / segments;
-                const A = Math.sin((1 - f) * d) / Math.sin(d);
-                const B = Math.sin(f * d) / Math.sin(d);
-
-                const x = A * Math.cos(lat1) * Math.cos(lng1Rad) + B * Math.cos(lat2) * Math.cos(lng2Rad);
-                const y = A * Math.cos(lat1) * Math.sin(lng1Rad) + B * Math.cos(lat2) * Math.sin(lng2Rad);
-                const z = A * Math.sin(lat1) + B * Math.sin(lat2);
-
-                const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
-                const lng = Math.atan2(y, x);
-
-                coords.push([lng * 180 / Math.PI, lat * 180 / Math.PI]);
+                const t = i / segments;
+                const x = (1-t)*(1-t)*lng1 + 2*(1-t)*t*ctrlLng + t*t*lng2;
+                const y = (1-t)*(1-t)*lat1 + 2*(1-t)*t*ctrlLat + t*t*lat2;
+                coords.push([x, y]);
             }
             return coords;
+        }
+
+        // Custom MapLibre Control for Resetting Map View
+        class ResetMapControl {
+            onAdd(map) {
+                this._map = map;
+                this._container = document.createElement('div');
+                this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+                
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.title = 'Reset Map View';
+                btn.innerHTML = `<svg class="w-5 h-5 mx-auto text-slate-600 hover:text-brand-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>`;
+                btn.onclick = () => {
+                    if (typeof clearSearch === 'function') clearSearch();
+                    if (typeof resetToGlobal === 'function') resetToGlobal();
+                };
+                
+                this._container.appendChild(btn);
+                return this._container;
+            }
+
+            onRemove() {
+                this._container.parentNode.removeChild(this._container);
+                this._map = undefined;
+            }
         }
 
         // Initialize Map
@@ -477,6 +544,7 @@
                 zoom: 1.5,
                 minZoom: 1.1,
                 maxZoom: 10,
+                renderWorldCopies: false,   // Show only one copy of the world
                 cooperativeGestures: false, // Allow single finger movement on mobile
                 dragRotate: false,          // Disable map rotation via dragging
                 touchPitch: false           // Disable pinch-to-pitch gesture
@@ -489,8 +557,10 @@
 
             // Controls
             map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+            map.addControl(new ResetMapControl(), 'top-right');
 
             map.on('load', () => {
+                addArrowheadImage();
                 setupMapSources();
                 setupMapLayers();
                 setupMapEvents();
@@ -498,6 +568,24 @@
                 // Trigger initial render
                 selectPreset('global');
             });
+        }
+
+        // Generate a small navy arrowhead icon for directional arcs (points +x / right)
+        function addArrowheadImage() {
+            if (map.hasImage && map.hasImage('arrowhead')) return;
+            const s = 24;
+            const c = document.createElement('canvas');
+            c.width = s; c.height = s;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.moveTo(5, 4);
+            ctx.lineTo(20, 12);
+            ctx.lineTo(5, 20);
+            ctx.closePath();
+            ctx.fill();
+            const img = ctx.getImageData(0, 0, s, s);
+            map.addImage('arrowhead', { width: s, height: s, data: img.data }, { pixelRatio: 2 });
         }
 
         // Group players into aggregated view properties
@@ -589,20 +677,28 @@
                 lineMetrics: true // Required for beautiful line-gradient rendering
             });
 
-            // 4. Selected Path Source (glowing line overlay on top)
+            // 4. Selected/Highlighted directional arcs (player arc, or all of a country's arcs)
+            //    lineMetrics enables the coral->navy direction gradient.
             map.addSource('selected-path-source', {
                 type: 'geojson',
+                lineMetrics: true,
                 data: { type: 'FeatureCollection', features: [] }
             });
 
-            // 5. Birthplaces details Source (active when a country is selected)
+            // 5. Birthplaces ("born here" coral dots) — active when a country/player is selected
             map.addSource('birth-towns-source', {
                 type: 'geojson',
                 data: { type: 'FeatureCollection', features: [] }
             });
 
-            // 6. Centroid halo rings (active highlight marker)
+            // 6. Soft emphasis halo behind the selected node (colored by kind: origin/dest)
             map.addSource('highlighted-node-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+
+            // 7. Destination markers ("plays here" navy rings) — national-team hubs in the selection
+            map.addSource('dest-nodes-source', {
                 type: 'geojson',
                 data: { type: 'FeatureCollection', features: [] }
             });
@@ -626,13 +722,13 @@
                         'interpolate',
                         ['linear'],
                         ['line-progress'],
-                        0.0, 'rgba(239, 68, 68, 0.25)', // stark red with slight transparency at birthplace
-                        1.0, 'rgba(220, 38, 38, 0.95)'  // solid stark red at squad hub
+                        0.0, 'rgba(224, 122, 95, 0.30)', // coral at birthplace (origin)
+                        1.0, 'rgba(15, 23, 42, 0.85)'    // navy at national-team hub (destination)
                     ]
                 }
             });
 
-            // 2. Active highlighted single player path layer
+            // 2. Selected/highlighted directional arcs (coral origin -> navy destination)
             map.addLayer({
                 id: 'selected-path-layer',
                 type: 'line',
@@ -642,23 +738,44 @@
                     'line-join': 'round'
                 },
                 paint: {
-                    'line-width': 3.0,
-                    'line-color': '#991b1b', // deep premium crimson
-                    'line-opacity': 0.95
+                    'line-width': 2.6,
+                    'line-opacity': 0.95,
+                    'line-gradient': [
+                        'interpolate', ['linear'], ['line-progress'],
+                        0.0, '#e07a5f', // coral at birthplace
+                        1.0, '#0f172a'  // navy at national team
+                    ]
                 }
             });
 
-            // 3. Highlighted Node Circle Halo (Rings)
+            // 2b. Directional arrowheads along the selected arcs
+            map.addLayer({
+                id: 'sel-arrows-layer',
+                type: 'symbol',
+                source: 'selected-path-source',
+                layout: {
+                    'symbol-placement': 'line',
+                    'symbol-spacing': 110,
+                    'icon-image': 'arrowhead',
+                    'icon-size': 0.5,
+                    'icon-rotation-alignment': 'map',
+                    'icon-allow-overlap': true,
+                    'icon-ignore-placement': true
+                },
+                paint: { 'icon-opacity': 0.92 }
+            });
+
+            // 3. Soft emphasis halo behind the selected node (coral=origin, navy=destination)
             map.addLayer({
                 id: 'highlighted-node-layer',
                 type: 'circle',
                 source: 'highlighted-node-source',
                 paint: {
-                    'circle-radius': 18,
-                    'circle-color': '#991b1b',
-                    'circle-opacity': 0.25,
+                    'circle-radius': 17,
+                    'circle-color': ['match', ['get', 'kind'], 'dest', '#0f172a', '#e07a5f'],
+                    'circle-opacity': 0.18,
                     'circle-stroke-width': 1.5,
-                    'circle-stroke-color': '#991b1b'
+                    'circle-stroke-color': ['match', ['get', 'kind'], 'dest', '#0f172a', '#e07a5f']
                 }
             });
 
@@ -759,16 +876,31 @@
                 source: 'birth-towns-source',
                 paint: {
                     'circle-radius': 5,
-                    'circle-color': '#991b1b',
+                    'circle-color': '#e07a5f', // coral = "born here" (origin)
+                    'circle-opacity': ['case', ['boolean', ['get', 'faded'], false], 0.35, 0.95],
                     'circle-stroke-width': 1.5,
                     'circle-stroke-color': '#faf8f5'
+                }
+            });
+
+            // 9. Destination markers: navy rings = "plays here" (national-team hubs)
+            map.addLayer({
+                id: 'dest-nodes-layer',
+                type: 'circle',
+                source: 'dest-nodes-source',
+                paint: {
+                    'circle-radius': ['case', ['boolean', ['get', 'primary'], false], 9, 7],
+                    'circle-color': '#faf8f5',
+                    'circle-opacity': 0.95,
+                    'circle-stroke-width': 3,
+                    'circle-stroke-color': '#0f172a'
                 }
             });
         }
 
         // Setup Map Interactions & Events
         function setupMapEvents() {
-            const interactiveLayers = ['squads-layer', 'origins-layer', 'birth-towns-layer', 'migration-paths-layer'];
+            const interactiveLayers = ['squads-layer', 'origins-layer', 'birth-towns-layer', 'migration-paths-layer', 'dest-nodes-layer'];
 
             // Pointer cursor on hover
             interactiveLayers.forEach(lyr => {
@@ -790,6 +922,12 @@
             map.on('click', 'origins-layer', (e) => {
                 const feat = e.features[0];
                 selectCountry(feat.properties.country, 'origin');
+            });
+
+            // Clicks on destination ("plays here") navy rings -> drill into that national team
+            map.on('click', 'dest-nodes-layer', (e) => {
+                const feat = e.features[0];
+                if (feat.properties.country) selectCountry(feat.properties.country, 'squad');
             });
 
             // Clicks on Birth town circles
@@ -825,10 +963,10 @@
                     let content = '';
                     if (f.layer.id === 'squads-layer') {
                         const flag = getFlagTag(f.properties.country);
-                        content = `<strong>${flag}${f.properties.country}</strong><br>${f.properties.count} foreign-born players`;
+                        content = `<strong>${flag}${f.properties.country}</strong><br>${f.properties.count} foreign-born player${f.properties.count === 1 ? '' : 's'}`;
                     } else if (f.layer.id === 'origins-layer') {
                         const flag = getFlagTag(f.properties.country);
-                        content = `<strong>Born in ${flag}${f.properties.country}</strong><br>${f.properties.count} players`;
+                        content = `<strong>Born in ${flag}${f.properties.country}</strong><br>${f.properties.count} player${f.properties.count === 1 ? '' : 's'}`;
                     } else if (f.layer.id === 'birth-towns-layer') {
                         const flag = getFlagTag(f.properties.birthCountry);
                         const cleanTown = cleanTownName(f.properties.birthTown, f.properties.birthCountry);
@@ -859,6 +997,9 @@
             map.getSource('selected-path-source').setData({ type: 'FeatureCollection', features: [] });
             map.getSource('birth-towns-source').setData({ type: 'FeatureCollection', features: [] });
             map.getSource('highlighted-node-source').setData({ type: 'FeatureCollection', features: [] });
+            map.getSource('dest-nodes-source').setData({ type: 'FeatureCollection', features: [] });
+            hideSelectionChrome();
+            restoreAggregates();
 
             // Update preset buttons styling (Desktop)
             const buttons = ['preset-global', 'preset-factories'];
@@ -940,10 +1081,68 @@
                 map.getSource('selected-path-source').setData({ type: 'FeatureCollection', features: [] });
                 map.getSource('birth-towns-source').setData({ type: 'FeatureCollection', features: [] });
                 map.getSource('highlighted-node-source').setData({ type: 'FeatureCollection', features: [] });
+                map.getSource('dest-nodes-source').setData({ type: 'FeatureCollection', features: [] });
+                hideSelectionChrome();
+                restoreAggregates();
                 map.setPaintProperty('migration-paths-layer', 'line-opacity', 0.24);
                 renderIntroPanel();
                 setDrawerHeight('collapsed');
             }
+        }
+
+        // ============================================================
+        // Selection visual helpers (directional "born here -> plays here" grammar)
+        // ============================================================
+        let selectionMarkers = [];
+
+        function clearSelectionMarkers() {
+            selectionMarkers.forEach(m => m.remove());
+            selectionMarkers = [];
+        }
+
+        // Place a small flag+name chip on the map at an endpoint
+        function addLabelMarker(lngLat, html, kind) {
+            if (!lngLat) return;
+            const el = document.createElement('div');
+            el.className = 'sel-label ' + (kind === 'dest' ? 'sel-label-dest' : 'sel-label-origin');
+            el.innerHTML = html;
+            const m = new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat(lngLat).addTo(map);
+            selectionMarkers.push(m);
+        }
+
+        // Show the floating caption; hide everything on reset
+        function showCaption(html) {
+            const cap = document.getElementById('map-caption');
+            cap.innerHTML = html;
+            cap.classList.remove('hidden');
+        }
+
+        function hideSelectionChrome() {
+            document.getElementById('map-caption').classList.add('hidden');
+            clearSelectionMarkers();
+        }
+
+        // Top-N distinct values of a field, ranked by frequency
+        function topByCount(players, key, n) {
+            const counts = {};
+            players.forEach(p => { counts[p[key]] = (counts[p[key]] || 0) + 1; });
+            return Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, n);
+        }
+
+        // Build a directional great-circle arc Feature (birthplace -> team)
+        function buildArc(start, end, props) {
+            return { type: 'Feature', geometry: { type: 'LineString', coordinates: interpolateGreatCircle(start, end) }, properties: props || {} };
+        }
+
+        // Fade the aggregate count-circles during a selection so the grammar stands out
+        function dimAggregates() {
+            ['squads-layer', 'origins-layer'].forEach(l => { if (map.getLayer(l)) map.setPaintProperty(l, 'circle-opacity', 0.10); });
+            ['squads-text-layer', 'origins-text-layer'].forEach(l => { if (map.getLayer(l)) map.setPaintProperty(l, 'text-opacity', 0); });
+        }
+        function restoreAggregates() {
+            ['squads-layer', 'origins-layer'].forEach(l => { if (map.getLayer(l)) map.setPaintProperty(l, 'circle-opacity', 0.75); });
+            const op = ['case', ['>=', ['get', 'count'], 3], 1.0, 0.0];
+            ['squads-text-layer', 'origins-text-layer'].forEach(l => { if (map.getLayer(l)) map.setPaintProperty(l, 'text-opacity', op); });
         }
 
         // Select specific country node (Squad or Origin)
@@ -959,62 +1158,77 @@
                 document.getElementById(id).className = "py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-borderMuted text-brand-navy";
             });
 
-            const hubCoords = getHubCoords(countryName);
-            const centroidCoords = getCentroidCoords(countryName);
+            const selCoords = type === 'squad' ? getHubCoords(countryName) : getCentroidCoords(countryName);
 
-            // 1. Center map on node
-            if (type === 'squad' && hubCoords) {
-                map.flyTo({ center: hubCoords, zoom: 4.2, speed: 0.8 });
-                // Highlight circle ring
-                map.getSource('highlighted-node-source').setData({
-                    type: 'FeatureCollection',
-                    features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: hubCoords } }]
-                });
-            } else if (type === 'origin' && centroidCoords) {
-                map.flyTo({ center: centroidCoords, zoom: 4.2, speed: 0.8 });
-                // Highlight circle ring
-                map.getSource('highlighted-node-source').setData({
-                    type: 'FeatureCollection',
-                    features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: centroidCoords } }]
-                });
-            }
-
-            // 2. Filter migration paths: highlight selected country paths, dim others
-            if (type === 'squad') {
-                map.setPaintProperty('migration-paths-layer', 'line-opacity', [
-                    'case',
-                    ['==', ['get', 'nationalTeam'], countryName], 0.70,
-                    0.05
-                ]);
-            } else {
-                map.setPaintProperty('migration-paths-layer', 'line-opacity', [
-                    'case',
-                    ['==', ['get', 'birthCountry'], countryName], 0.70,
-                    0.05
-                ]);
-            }
-
-            // 3. Clear selected player glowing path line
-            map.getSource('selected-path-source').setData({ type: 'FeatureCollection', features: [] });
-
-            // 4. Draw player birth towns as small active dots
             const filteredPlayers = PLAYERS_DATA.filter(p =>
                 (type === 'squad' && p['National Team'] === countryName) ||
                 (type === 'origin' && p['Birth country'] === countryName)
             );
 
+            // 1. Directional arcs (coral birthplace -> navy team) for every player in the selection
+            const arcs = filteredPlayers.map(p => {
+                const s = [p.Longitude, p.Latitude];
+                const e = getHubCoords(p['National Team']);
+                if (!s[0] || !s[1] || !e) return null;
+                return buildArc(s, e);
+            }).filter(Boolean);
+            map.getSource('selected-path-source').setData({ type: 'FeatureCollection', features: arcs });
+
+            // 2. Dim the base arcs + aggregate circles so the highlighted grammar reads
+            map.setPaintProperty('migration-paths-layer', 'line-opacity', 0.04);
+            dimAggregates();
+
+            // 3. "Born here" coral dots = each player's birthplace
             const birthTownFeatures = filteredPlayers.map(p => ({
                 type: 'Feature',
                 geometry: { type: 'Point', coordinates: [p.Longitude, p.Latitude] },
                 properties: { name: p.name, pos: p.Pos, club: p.Club, birthTown: p['Birth town'], birthCountry: p['Birth country'] }
             }));
+            map.getSource('birth-towns-source').setData({ type: 'FeatureCollection', features: birthTownFeatures });
 
-            map.getSource('birth-towns-source').setData({
+            // 4. "Plays here" navy rings = destination national-team hubs
+            let destFeatures = [];
+            if (type === 'squad') {
+                if (selCoords) destFeatures = [{ type: 'Feature', geometry: { type: 'Point', coordinates: selCoords }, properties: { country: countryName, primary: true } }];
+            } else {
+                const teams = {};
+                filteredPlayers.forEach(p => { teams[p['National Team']] = (teams[p['National Team']] || 0) + 1; });
+                destFeatures = Object.keys(teams).map(t => {
+                    const hub = getHubCoords(t);
+                    return hub ? { type: 'Feature', geometry: { type: 'Point', coordinates: hub }, properties: { country: t, count: teams[t] } } : null;
+                }).filter(Boolean);
+            }
+            map.getSource('dest-nodes-source').setData({ type: 'FeatureCollection', features: destFeatures });
+
+            // 5. Soft emphasis halo behind the selected node (coral=origin, navy=team)
+            map.getSource('highlighted-node-source').setData({
                 type: 'FeatureCollection',
-                features: birthTownFeatures
+                features: selCoords ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: selCoords }, properties: { kind: type === 'squad' ? 'dest' : 'origin' } }] : []
             });
 
-            // 5. Render list and open Mobile sheet
+            // 6. Center the map on the selected node
+            if (selCoords) map.flyTo({ center: selCoords, zoom: 4.0, speed: 0.8 });
+
+            // 7. Plain-language caption + on-map endpoint labels
+            clearSelectionMarkers();
+            const flag = getFlagTag(countryName);
+            if (type === 'squad') {
+                const originCount = new Set(filteredPlayers.map(p => p['Birth country'])).size;
+                const pText = filteredPlayers.length === 1 ? '1 player' : `${filteredPlayers.length} players`;
+                const cText = originCount === 1 ? '1 country' : `${originCount} countries`;
+                showCaption(`${pText} from ${cText} &rarr; play for <b>${flag}${countryName}</b>`);
+                addLabelMarker(selCoords, `${flag}${countryName}`, 'dest');
+                topByCount(filteredPlayers, 'Birth country', 3).forEach(c => addLabelMarker(getCentroidCoords(c), `${getFlagTag(c)}${c}`, 'origin'));
+            } else {
+                const teamCount = new Set(filteredPlayers.map(p => p['National Team'])).size;
+                const pText = filteredPlayers.length === 1 ? '1 player' : `${filteredPlayers.length} players`;
+                const tText = teamCount === 1 ? '1 national team' : `${teamCount} national teams`;
+                showCaption(`<b>${flag}${countryName}</b> &rarr; exported ${pText} to ${tText}`);
+                addLabelMarker(selCoords, `${flag}${countryName}`, 'origin');
+                topByCount(filteredPlayers, 'National Team', 3).forEach(t => addLabelMarker(getHubCoords(t), `${getFlagTag(t)}${t}`, 'dest'));
+            }
+
+            // 8. Render list and open mobile sheet
             renderCountryPanel(countryName, type, filteredPlayers);
             setDrawerHeight('half');
         }
@@ -1030,76 +1244,73 @@
                 if (btn) btn.className = "py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-borderMuted text-brand-navy";
             });
 
-            // 1. Plot highlighted single glowing great circle path
             const start = [player.Longitude, player.Latitude];
             const end = getHubCoords(player['National Team']);
-            if (start[0] && start[1] && end) {
-                const arc = interpolateGreatCircle(start, end);
-                map.getSource('selected-path-source').setData({
-                    type: 'Feature',
-                    geometry: { type: 'LineString', coordinates: arc },
-                    properties: {}
-                });
+            const hasArc = start[0] && start[1] && end;
 
-                // Fit map screen bounds to contain both points in the arc
+            // 1. One bold static directional arc (coral birthplace -> navy team)
+            if (hasArc) {
+                const arc = buildArc(start, end);
+                map.getSource('selected-path-source').setData({ type: 'FeatureCollection', features: [arc] });
                 fitBoundsToCoordinates(start, end);
+            } else {
+                map.getSource('selected-path-source').setData({ type: 'FeatureCollection', features: [] });
             }
 
-            // 2. Set halo circles at birth and destination
-            const startPoint = { type: 'Feature', geometry: { type: 'Point', coordinates: start } };
-            const endPoint = { type: 'Feature', geometry: { type: 'Point', coordinates: end } };
-            map.getSource('highlighted-node-source').setData({
+            // 2. Emphasis halos: coral at birthplace, navy at national team
+            const haloFeats = [];
+            if (start[0] && start[1]) haloFeats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: start }, properties: { kind: 'origin' } });
+            if (end) haloFeats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: end }, properties: { kind: 'dest' } });
+            map.getSource('highlighted-node-source').setData({ type: 'FeatureCollection', features: haloFeats });
+
+            // 3. Navy "plays here" ring at the team hub
+            map.getSource('dest-nodes-source').setData({
                 type: 'FeatureCollection',
-                features: [startPoint, endPoint]
+                features: end ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: end }, properties: { country: player['National Team'], primary: true } }] : []
             });
 
-            // 3. Draw teammates path lines with medium visibility, others dark dim
-            map.setPaintProperty('migration-paths-layer', 'line-opacity', [
-                'case',
-                ['==', ['get', 'nationalTeam'], player['National Team']], 0.60,
-                0.03
-            ]);
+            // 4. Coral "born here" dot — only this player, for a focused story
+            map.getSource('birth-towns-source').setData({
+                type: 'FeatureCollection',
+                features: (start[0] && start[1]) ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: start }, properties: { name: player.name, birthTown: player['Birth town'], birthCountry: player['Birth country'] } }] : []
+            });
 
-            // Draw birth towns of teammates
-            const teammates = PLAYERS_DATA.filter(p => p['National Team'] === player['National Team']);
-            const birthTownFeatures = teammates.map(p => ({
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: [p.Longitude, p.Latitude] },
-                properties: { name: p.name, pos: p.Pos, club: p.Club, birthTown: p['Birth town'], birthCountry: p['Birth country'] }
-            }));
-            map.getSource('birth-towns-source').setData({ type: 'FeatureCollection', features: birthTownFeatures });
+            // 5. Dim all base arcs + aggregate circles so only this player's arc reads
+            map.setPaintProperty('migration-paths-layer', 'line-opacity', 0.03);
+            dimAggregates();
 
-            // 4. Render details card and open mobile sheet
+            // 6. Plain-language caption + endpoint labels
+            clearSelectionMarkers();
+            const bFlag = getFlagTag(player['Birth country']);
+            const tFlag = getFlagTag(player['National Team']);
+            showCaption(`Born in <b>${bFlag}${player['Birth country']}</b> &rarr; now represents <b>${tFlag}${player['National Team']}</b>`);
+            addLabelMarker(start, `${bFlag}${player['Birth country']}`, 'origin');
+            addLabelMarker(end, `${tFlag}${player['National Team']}`, 'dest');
+
+            // 7. Render details card and open mobile sheet
             renderPlayerPanel(player);
             setDrawerHeight('half');
         }
 
         // Fit map viewport to encompass coordinates with padding
         function fitBoundsToCoordinates(p1, p2) {
-            const lats = [p1[1], p2[1]];
-            const lngs = [p1[0], p2[0]];
+            // Use the interpolated arc to get the true bounding box
+            // (handles paths that cross the antimeridian cleanly)
+            const arc = interpolateGreatCircle(p1, p2, 20);
+            const allLngs = arc.map(c => c[0]);
+            const allLats = arc.map(c => c[1]);
 
-            let minLng, maxLng;
-            if (Math.abs(lngs[0] - lngs[1]) > 180) {
-                // Coordinates wrap around, use the interpolated path nodes coordinates boundary
-                const arc = interpolateGreatCircle(p1, p2, 10);
-                const arcLngs = arc.map(c => c[0]);
-                minLng = Math.min(...arcLngs);
-                maxLng = Math.max(...arcLngs);
-            } else {
-                minLng = Math.min(...lngs);
-                maxLng = Math.max(...lngs);
-            }
-
-            const minLat = Math.min(...lats);
-            const maxLat = Math.max(...lats);
+            const minLng = Math.min(...allLngs);
+            const maxLng = Math.max(...allLngs);
+            const minLat = Math.min(...allLats);
+            const maxLat = Math.max(...allLats);
 
             const leftPadding = window.innerWidth < 700 ? 40 : 420;
 
             map.fitBounds(
                 [[minLng, minLat], [maxLng, maxLat]],
                 {
-                    padding: { top: 90, bottom: 90, left: leftPadding, right: 50 },
+                    padding: { top: 90, bottom: 120, left: leftPadding, right: 50 },
                     maxZoom: 5.5,
                     duration: 1500
                 }
@@ -1232,9 +1443,11 @@
             const isSquad = type === 'squad';
             const title = countryName;
             const subtitle = isSquad ? "National Squad" : "Birthplace";
+            const pText = players.length === 1 ? '1 foreign-born player' : `${players.length} foreign-born players`;
+            const pBornText = players.length === 1 ? '1 player born here' : `${players.length} players born here`;
             const statText = isSquad
-                ? `<strong>${players.length} foreign-born players</strong> on the roster.`
-                : `<strong>${players.length} players born here</strong> representing other national teams.`;
+                ? `<strong>${pText}</strong> on the roster.`
+                : `<strong>${pBornText}</strong> representing other national teams.`;
 
             // Prepend flag if country is a squad (importer) or origin (exporter)
             const flag = getFlagTag(countryName);
@@ -1265,7 +1478,7 @@
                                         <div class="text-[10px] text-brand-textMuted">${p.Pos} | ${p.Club}</div>
                                     </div>
                                     <div class="text-right text-[10px]">
-                                        <span class="text-slate-400">${isSquad ? `Born in ${p['Birth town']}` : `Represents ${flag}${p['National Team']}`}</span>
+                                        <span class="text-slate-400">${isSquad ? `Born in ${cleanTownName(p['Birth town'], p['Birth country']) ? p['Birth town'] : p['Birth country']}` : `Represents ${flag}${p['National Team']}`}</span>
                                     </div>
                                 </div>
                                 `;
