@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Football Diaspora</title>
+
+    <!-- Meta tags for SEO -->
+    <meta name="description"
+        content="An interactive migration map visualizing the global roots of foreign-born international football players, analyzing colonial pipelines, talent factories, and refugee resettlement journeys.">
+    <meta name="keywords"
+        content="football, migration, data visualization, maplibre, map, sports, data journalism, infographics">
+
+    <!-- Google Fonts: Lora (serif) & Inter (sans-serif) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+        rel="stylesheet">
+
+    <!-- MapLibre GL JS CSS -->
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    screens: {
+                        // Breakpoint for embedded iframe size (700px)
+                        'desktop': '700px',
+                    },
+                    colors: {
+                        brand: {
+                            navy: '#0f172a',
+                            warmBg: '#faf8f5',
+                            cardBg: '#fcfbfa',
+                            coral: '#e07a5f',
+                            amber: '#f59e0b',
+                            textMuted: '#64748b',
+                            borderMuted: '#e2e8f0',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Lora', 'serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #faf8f5;
+            color: #0f172a;
+        }
+
+        #map {
+            /* Sepia and styling filter to achieve an elegant warm editorial look on raster tiles */
+            filter: sepia(0.2) contrast(0.95) brightness(1.02);
+            background-color: #faf8f5;
+        }
+
+        /* Hide scrollbars for slick editorial panels */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Responsive Layout Rules based on 700px width limit with dynamic width sidebar */
+        @media (min-width: 700px) {
+            .desktop-only {
+                display: flex !important;
+            }
+
+            .mobile-only {
+                display: none !important;
+            }
+
+            #sidebar-wrapper {
+                height: 100vh;
+                position: relative;
+                z-index: 10;
+            }
+
+            #map-wrapper {
+                height: 100vh;
+                position: relative;
+            }
+        }
+
+        @media (max-width: 699px) {
+            .desktop-only {
+                display: none !important;
+            }
+
+            .mobile-only {
+                display: block !important;
+            }
+
+            #sidebar-wrapper {
+                display: none !important;
+            }
+
+            #map-wrapper {
+                width: 100%;
+                height: 100vh;
+                position: absolute;
+                left: 0;
+                top: 0;
+            }
+        }
+
+        /* Sidebar Collapsed Animation Styles */
+        #sidebar-wrapper {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #sidebar-wrapper.sidebar-collapsed {
+            width: 0 !important;
+            min-width: 0 !important;
+            max-width: 0 !important;
+            border-right-width: 0 !important;
+            padding: 0 !important;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* MapLibre custom styles */
+        .maplibregl-ctrl-group button {
+            background-color: #fcfbfa !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+        }
+
+        .maplibregl-ctrl-group button span {
+            filter: invert(0.1);
+        }
+
+        .maplibregl-ctrl-compass {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body class="font-sans antialiased overflow-hidden w-full h-full select-none">
+
+    <!-- Tooltip Element -->
+    <div id="tooltip"
+        class="absolute hidden bg-slate-900 text-slate-100 text-xs px-2.5 py-1.5 rounded shadow-lg pointer-events-none z-50 transition-opacity duration-150 border border-slate-700">
+    </div>
+
+    <div class="relative w-screen h-screen flex overflow-hidden">
+
+        <!-- ============================================ -->
+        <!-- SIDEBAR (DESKTOP)                            -->
+        <!-- ============================================ -->
+        <aside id="sidebar-wrapper"
+            class="desktop-only flex-col h-full bg-[#fcfbfa] border-r border-[#e8e4db] shadow-xl overflow-hidden w-[25vw] min-w-[280px] max-w-[380px] flex-shrink-0 relative">
+            <!-- Header Section -->
+            <div class="p-6 border-b border-[#e8e4db] flex-shrink-0">
+                <div
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1 mb-3 bg-[#f2edd5] text-[#b35a38] text-[10px] font-bold tracking-widest rounded-full uppercase">
+                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 512 512">
+                        <path
+                            d="M256 8C119 8 8 119 8 256s111 248 248 248 248-111 248-248S393 8 256 8zm0 72c19.3 0 37.7 5.1 53.7 14.1L277.5 150c-6.8-1.3-13.8-2-21.5-2s-14.7.7-21.5 2l-32.2-55.9C218.3 85.1 236.7 80 256 80zm-119.5 53.8l32.2 55.9c-17.5 11.2-30.5 28.5-36.1 49l-59.5-12.7c8.8-37.5 31.7-69.6 63.4-92.2zM64 256c0-7.3.7-14.4 2-21.3l59.5 12.7c-1.9 8.2-2.9 16.8-2.9 25.6s1 17.4 2.9 25.6l-59.5 12.7c-1.3-6.9-2-14-2-21.3zm72.5 122.2l59.5-12.7c5.6 20.5 18.6 37.8 36.1 49l-32.2 55.9c-31.7-22.6-54.6-54.7-63.4-92.2zM256 432c-19.3 0-37.7-5.1-53.7-14.1l32.2-55.9c6.8 1.3 13.8 2 21.5 2s14.7-.7 21.5-2l32.2 55.9c-16 9-34.4 14.1-53.7 14.1zm119.5-53.8l-32.2-55.9c17.5-11.2 30.5-28.5 36.1-49l59.5 12.7c-8.8 37.5-31.7 69.6-63.4 92.2zM448 256c0 7.3-.7 14.4-2 21.3l-59.5-12.7c1.9-8.2 2.9-16.8 2.9-25.6s-1-17.4-2.9-25.6l59.5-12.7c1.3 6.9 2 14 2 21.3zm-72.5-122.2l-59.5 12.7c-5.6-20.5-18.6-37.8-36.1-49l32.2-55.9c31.7 22.6 54.6 54.7 63.4 92.2zm-120.7 74.2c27.1 0 49.2 22.1 49.2 49.2s-22.1 49.2-49.2 49.2-49.2-22.1-49.2-49.2 22.1-49.2 49.2-49.2z" />
+                    </svg>
+                    <span>FIFA 2026</span>
+                </div>
+                <h1 class="font-serif text-3xl font-bold tracking-tight text-brand-navy leading-tight">Mapping
+                    Foreign-born Players</h1>
+                <p class="mt-1.5 text-xs text-brand-textMuted leading-relaxed">
+                    This world cup has <b>292 foreign-born</b> players across 40 countries. See where they were born &
+                    which country they are representing:
+                </p>
+            </div>
+
+            <!-- Scrollable Side Panel Details -->
+            <div class="flex-grow overflow-y-auto no-scrollbar p-6 space-y-6">
+                <!-- Preset Filters (Investigative Beats) -->
+                <div>
+                    <span
+                        class="block text-[10px] uppercase font-bold tracking-widest text-brand-textMuted mb-2">Narrative
+                        Preset Beats</span>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="preset-global" onclick="selectPreset('global')"
+                            class="px-2.5 py-2 text-xs font-semibold text-center border rounded-lg transition-all duration-200 border-brand-navy bg-brand-navy text-[#faf8f5]">
+                            The Global Picture
+                        </button>
+                        <button id="preset-factories" onclick="selectPreset('factories')"
+                            class="px-2.5 py-2 text-xs font-semibold text-center border rounded-lg transition-all duration-200 border-brand-borderMuted text-brand-navy hover:bg-[#faf8f5]">
+                            Talent Factories
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Autocomplete Search Input -->
+                <div class="relative">
+                    <span class="block text-[10px] uppercase font-bold tracking-widest text-brand-textMuted mb-2">Search
+                        Players or Teams</span>
+                    <div class="relative">
+                        <input id="desktop-search" type="text" placeholder="Search (e.g. Davies, Morocco, France)..."
+                            class="w-full pl-8 pr-8 py-2 text-xs bg-[#faf8f5] border border-[#e8e4db] rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-coral focus:border-brand-coral transition-all">
+                        <svg class="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" fill="none"
+                            stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        <button id="desktop-search-clear" onclick="clearSearch()"
+                            class="absolute right-2.5 top-2 w-5 h-5 text-slate-400 hover:text-brand-navy hidden text-sm font-bold">&times;</button>
+                    </div>
+                    <!-- Autocomplete dropdown -->
+                    <div id="desktop-search-results"
+                        class="absolute w-full mt-1 bg-white border border-[#e8e4db] rounded-lg shadow-xl max-h-56 overflow-y-auto z-50 hidden no-scrollbar text-xs">
+                    </div>
+                </div>
+
+                <!-- Dynamic Content Area -->
+                <div id="desktop-details" class="pt-4 border-t border-[#e2e8f0]">
+                    <!-- Rendered dynamically -->
+                </div>
+            </div>
+
+            <!-- Footer brand info -->
+            <div
+                class="p-4 border-t border-[#e8e4db] bg-[#faf8f5] flex-shrink-0 text-center text-[10px] text-brand-textMuted">
+                The Daily Star &copy; 2026
+            </div>
+        </aside>
+
+        <!-- ============================================ -->
+        <!-- MAP CANVAS CONTAINER                         -->
+        <!-- ============================================ -->
+        <main id="map-wrapper" class="flex-grow h-full relative">
+            <!-- Sidebar Collapse Tab Button (floating on map, visible when sidebar is open) -->
+            <button id="sidebar-collapse-btn"
+                class="absolute top-4 left-4 w-10 h-10 rounded-xl border border-[#e8e4db] bg-[#fcfbfa] hover:bg-slate-50 shadow-lg flex items-center justify-center text-slate-600 hover:text-brand-navy z-40 transition cursor-pointer"
+                title="Collapse Panel">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"></path>
+                </svg>
+            </button>
+
+            <!-- Sidebar Expand Tab Button (floating on map, hidden when sidebar is visible) -->
+            <button id="sidebar-expand-btn"
+                class="hidden absolute top-4 left-4 w-10 h-10 rounded-xl border border-[#e8e4db] bg-[#fcfbfa] hover:bg-slate-50 shadow-lg flex items-center justify-center text-slate-600 hover:text-brand-navy z-40 transition cursor-pointer"
+                title="Expand Panel">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path>
+                </svg>
+            </button>
+
+            <div id="map" class="w-full h-full"></div>
+
+            <!-- MOBILE SEARCH OVERLAY (Floating at Top) -->
+            <div
+                class="mobile-only absolute top-3 left-3 right-3 z-40 bg-[#fcfbfa]/90 backdrop-blur-md rounded-xl shadow-lg border border-[#e8e4db] px-3 py-2">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2.5"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    <input id="mobile-search" type="text" placeholder="Search players, squads, origins..."
+                        class="flex-grow bg-transparent text-xs text-brand-navy border-none focus:outline-none placeholder-slate-400">
+                    <button id="mobile-search-clear" onclick="clearSearch()"
+                        class="text-slate-400 hover:text-brand-navy hidden text-base font-bold">&times;</button>
+                </div>
+                <!-- Mobile search results -->
+                <div id="mobile-search-results"
+                    class="absolute left-0 right-0 w-full mt-2 bg-white border border-[#e8e4db] rounded-lg shadow-xl max-h-48 overflow-y-auto hidden no-scrollbar text-xs">
+                </div>
+            </div>
+        </main>
+
+        <!-- ============================================ -->
+        <!-- MOBILE BOTTOM SHEET DRAWER                   -->
+        <!-- ============================================ -->
+        <div id="mobile-drawer"
+            class="mobile-only fixed bottom-0 left-0 right-0 bg-[#fcfbfa] border-t border-[#e8e4db] rounded-t-2xl shadow-[0_-8px_30px_rgb(0,0,0,0.12)] z-50 transition-all duration-300 ease-in-out h-[15vh]">
+            <!-- Drawer pull handle -->
+            <div id="mobile-drawer-handle" class="w-full py-3 cursor-pointer flex justify-center items-center">
+                <div class="w-12 h-1.5 bg-[#e2e8f0] hover:bg-slate-300 rounded-full transition-colors"></div>
+            </div>
+            <!-- Scrollable content area -->
+            <div id="mobile-drawer-content" class="px-5 pb-6 overflow-y-auto h-[calc(100%-30px)] no-scrollbar">
+                <!-- Preset Filters (Investigative Beats) for mobile inside drawer -->
+                <div id="mobile-preset-container" class="mb-4">
+                    <span
+                        class="block text-[9px] uppercase font-bold tracking-widest text-brand-textMuted mb-2">Narrative
+                        Preset Beats</span>
+                    <div class="grid grid-cols-2 gap-1">
+                        <button id="m-preset-global" onclick="selectPreset('global')"
+                            class="py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-navy bg-brand-navy text-[#faf8f5]">Global</button>
+                        <button id="m-preset-factories" onclick="selectPreset('factories')"
+                            class="py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-borderMuted text-brand-navy">Factories</button>
+                    </div>
+                </div>
+
+                <div id="mobile-details">
+                    <!-- Synced dynamically with desktop details panel -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MapLibre GL JS library -->
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+    <!-- Embedded Clean JSON Data -->
+    <script>
+        const PLAYERS_DATA = [{ "name": "Álvaro Fidalgo", "Pos": "MF", "Club": "Real Betis (ESP)", "Group": "A", "National Team": "Mexico", "Birth town": "Hevia, Siero, Asturias, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 43.38244, "Longitude": -5.71 }, { "name": "Brian Gutiérrez", "Pos": "MF", "Club": "Guadalajara", "Group": "A", "National Team": "Mexico", "Birth town": "Berwyn, Illinois, United States", "Birth country": "United States", "Foreign-born": "Yes", "Latitude": 41.8425, "Longitude": -87.79 }, { "name": "Julián Quiñones", "Pos": "FW", "Club": "Al-Qadsiah (KSA)", "Group": "A", "National Team": "Mexico", "Birth town": "Magüí Payán, Nariño Department, Colombia", "Birth country": "Colombia", "Foreign-born": "Yes", "Latitude": 1.765601, "Longitude": -78.184547 }, { "name": "Obed Vargas", "Pos": "MF", "Club": "Atlético Madrid (ESP)", "Group": "A", "National Team": "Mexico", "Birth town": "Anchorage, Alaska, United States", "Birth country": "United States", "Foreign-born": "Yes", "Latitude": 61.211262, "Longitude": -149.886818 }, { "name": "Santiago Giménez", "Pos": "FW", "Club": "Milan (ITA)", "Group": "A", "National Team": "Mexico", "Birth town": "Buenos Aires, Argentina", "Birth country": "Argentina", "Foreign-born": "Yes", "Latitude": -34.586867, "Longitude": -58.396111 }, { "name": "Jens Castrop", "Pos": "DF", "Club": "Borussia Mönchengladbach (GER)", "Group": "A", "National Team": "South Korea", "Birth town": "Düsseldorf, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 51.220862, "Longitude": 6.774445 }, { "name": "Amar Dedić", "Pos": "DF", "Club": "Benfica (POR)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Zell am See, Austria", "Birth country": "Austria", "Foreign-born": "Yes", "Latitude": 47.325, "Longitude": 12.79458 }, { "name": "Amir Hadžiahmetović", "Pos": "MF", "Club": "Hull City (ENG)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Nexø, Denmark", "Birth country": "Denmark", "Foreign-born": "Yes", "Latitude": 55.0625, "Longitude": 15.131944 }, { "name": "Armin Gigović", "Pos": "", "Club": "Young Boys (SUI)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Lund, Sweden", "Birth country": "Sweden", "Foreign-born": "Yes", "Latitude": 55.703889, "Longitude": 13.195 }, { "name": "Benjamin Tahirović", "Pos": "MF", "Club": "Brøndby (DEN)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Spånga, Sweden", "Birth country": "Sweden", "Foreign-born": "Yes", "Latitude": 59.391276, "Longitude": 17.908058 }, { "name": "Dennis Hadžikadunić", "Pos": "DF", "Club": "Sampdoria (ITA)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Malmö, Sweden", "Birth country": "Sweden", "Foreign-born": "Yes", "Latitude": 55.611032, "Longitude": 13.004551 }, { "name": "Dženis Burnić", "Pos": "MF", "Club": "Karlsruher SC (GER)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Hamm, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 51.681389, "Longitude": 7.819167 }, { "name": "Ermedin Demirović", "Pos": "FW", "Club": "VfB Stuttgart (GER)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Hamburg, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 53.552598, "Longitude": 9.991636 }, { "name": "Ermin Mahmić", "Pos": "MF", "Club": "Slovan Liberec", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Wels, Austria", "Birth country": "Austria", "Foreign-born": "Yes", "Latitude": 48.16, "Longitude": 14.02 }, { "name": "Esmir Bajraktarević", "Pos": "MF", "Club": "PSV Eindhoven (NED)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Appleton, Wisconsin, United States", "Birth country": "United States", "Foreign-born": "Yes", "Latitude": 44.266667, "Longitude": -88.4 }, { "name": "Haris Tabaković", "Pos": "FW", "Club": "Borussia Mönchengladbach (GER)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Grenchen, Switzerland", "Birth country": "Switzerland", "Foreign-born": "Yes", "Latitude": 47.190556, "Longitude": 7.396389 }, { "name": "Ivan Bašić", "Pos": "MF", "Club": "Astana (KAZ)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Imotski, Croatia", "Birth country": "Croatia", "Foreign-born": "Yes", "Latitude": 43.45, "Longitude": 17.216667 }, { "name": "Jovo Lukić", "Pos": "FW", "Club": "Universitatea Cluj (ROU)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Šabac, FR Yugoslavia", "Birth country": "FR Yugoslavia", "Foreign-born": "Yes", "Latitude": 44.75, "Longitude": 19.7 }, { "name": "Kerim Alajbegović", "Pos": "MF", "Club": "Red Bull Salzburg (AUT)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Cologne, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 50.94307, "Longitude": 6.955547 }, { "name": "Samed Baždar", "Pos": "FW", "Club": "Jagiellonia Białystok (POL)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Novi Pazar, Serbia", "Birth country": "Serbia", "Foreign-born": "Yes", "Latitude": 43.137778, "Longitude": 20.516111 }, { "name": "Sead Kolašinac", "Pos": "DF", "Club": "Atalanta (ITA)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Karlsruhe, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 49.004434, "Longitude": 8.407459 }, { "name": "Tarik Muharemović", "Pos": "DF", "Club": "Sassuolo (ITA)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Ljubljana, Slovenia", "Birth country": "Slovenia", "Foreign-born": "Yes", "Latitude": 46.051389, "Longitude": 14.506111 }, { "name": "Arjan Malić", "Pos": "RB", "Club": "Strum Graz(AUS)", "Group": "B", "National Team": "Bosnia and Herzegovina", "Birth town": "Jesenice, Slovenia", "Birth country": "Slovenia", "Foreign-born": "Yes", "Latitude": 46.43, "Longitude": 14.05 }, { "name": "Alfie Jones", "Pos": "DF", "Club": "Middlesbrough (ENG)", "Group": "B", "National Team": "Canada", "Birth town": "Bristol, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.461708, "Longitude": -2.60582 }, { "name": "Alphonso Davies", "Pos": "DF", "Club": "Bayern Munich (GER)", "Group": "B", "National Team": "Canada", "Birth town": "Buduburam, Ghana", "Birth country": "Ghana", "Foreign-born": "Yes", "Latitude": 5.524757, "Longitude": -0.47556 }, { "name": "Ismaël Koné", "Pos": "MF", "Club": "Sassuolo (ITA)", "Group": "B", "National Team": "Canada", "Birth town": "Yopougon, Abidjan, Côte d'Ivoire", "Birth country": "Côte d'Ivoire", "Foreign-born": "Yes", "Latitude": 5.316667, "Longitude": -4.066667 }, { "name": "Jonathan David", "Pos": "FW", "Club": "Juventus (ITA)", "Group": "B", "National Team": "Canada", "Birth town": "Brooklyn, New York City, United States", "Birth country": "United States", "Foreign-born": "Yes", "Latitude": 40.671264, "Longitude": -73.961334 }, { "name": "Luc de Fougerolles", "Pos": "DF", "Club": "Dender (BEL)", "Group": "B", "National Team": "Canada", "Birth town": "Battersea, London, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.47, "Longitude": -0.164 }, { "name": "Owen Goodman", "Pos": "GK", "Club": "Barnsley (ENG)", "Group": "B", "National Team": "Canada", "Birth town": "Harold Wood, London, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.592, "Longitude": 0.2313 }, { "name": "Tani Oluwaseyi", "Pos": "FW", "Club": "Villarreal (ESP)", "Group": "B", "National Team": "Canada", "Birth town": "Abuja, Nigeria", "Birth country": "Nigeria", "Foreign-born": "Yes", "Latitude": 9.066667, "Longitude": 7.483333 }, { "name": "Ahmed Alaaeldin", "Pos": "FW", "Club": "Al-Rayyan", "Group": "B", "National Team": "Qatar", "Birth town": "Ismailia, Egypt", "Birth country": "Egypt", "Foreign-born": "Yes", "Latitude": 30.583333, "Longitude": 32.266667 }, { "name": "Ahmed Fathy", "Pos": "MF", "Club": "Al-Arabi", "Group": "B", "National Team": "Qatar", "Birth town": "Aswan, Egypt", "Birth country": "Egypt", "Foreign-born": "Yes", "Latitude": 24.088889, "Longitude": 32.899722 }, { "name": "Almoez Ali", "Pos": "FW", "Club": "Al-Duhail", "Group": "B", "National Team": "Qatar", "Birth town": "Khartoum, Sudan", "Birth country": "Sudan", "Foreign-born": "Yes", "Latitude": 15.590632, "Longitude": 32.530518 }, { "name": "Assim Madibo", "Pos": "MF", "Club": "Al-Wakrah", "Group": "B", "National Team": "Qatar", "Birth town": "Khartoum, Sudan", "Birth country": "Sudan", "Foreign-born": "Yes", "Latitude": 15.559875, "Longitude": 32.55146 }, { "name": "Boualem Khoukhi", "Pos": "DF", "Club": "Al-Sadd", "Group": "B", "National Team": "Qatar", "Birth town": "Bou Ismail, Algeria", "Birth country": "Algeria", "Foreign-born": "Yes", "Latitude": 36.65, "Longitude": 2.7 }, { "name": "Edmilson Junior", "Pos": "FW", "Club": "Al-Duhail", "Group": "B", "National Team": "Qatar", "Birth town": "Liège, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 50.641188, "Longitude": 5.572128 }, { "name": "Issa Laye", "Pos": "DF", "Club": "Al-Arabi", "Group": "B", "National Team": "Qatar", "Birth town": "Senegal (town not specified)", "Birth country": "Senegal", "Foreign-born": "Yes", "Latitude": 14.59229, "Longitude": -16.74879 }, { "name": "Karim Boudiaf", "Pos": "MF", "Club": "Al-Duhail", "Group": "B", "National Team": "Qatar", "Birth town": "Rueil-Malmaison, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.876, "Longitude": 2.181 }, { "name": "Lucas Mendes", "Pos": "DF", "Club": "Al-Wakrah", "Group": "B", "National Team": "Qatar", "Birth town": "Curitiba, Brazil", "Birth country": "Brazil", "Foreign-born": "Yes", "Latitude": -25.44622, "Longitude": -49.26012 }, { "name": "Meshaal Barsham", "Pos": "GK", "Club": "Al-Sadd", "Group": "B", "National Team": "Qatar", "Birth town": "Khartoum, Sudan", "Birth country": "Sudan", "Foreign-born": "Yes", "Latitude": 15.558552, "Longitude": 32.517471 }, { "name": "Mohammed Muntari", "Pos": "FW", "Club": "Al-Gharafa", "Group": "B", "National Team": "Qatar", "Birth town": "Kumasi, Ghana", "Birth country": "Ghana", "Foreign-born": "Yes", "Latitude": 6.71, "Longitude": -1.618 }, { "name": "Pedro Miguel", "Pos": "DF", "Club": "Al-Sadd", "Group": "B", "National Team": "Qatar", "Birth town": "Algueirão–Mem Martins, Portugal", "Birth country": "Portugal", "Foreign-born": "Yes", "Latitude": 38.8, "Longitude": -9.35 }, { "name": "Salah Zakaria", "Pos": "GK", "Club": "Al-Duhail", "Group": "B", "National Team": "Qatar", "Birth town": "Al-Sharqiyah Governorate, Egypt (town not specified)", "Birth country": "Egypt", "Foreign-born": "Yes", "Latitude": 30.7, "Longitude": 31.63 }, { "name": "Yusuf Abdurisag", "Pos": "FW", "Club": "Al-Wakrah", "Group": "B", "National Team": "Qatar", "Birth town": "Mogadishu, Somalia", "Birth country": "Somalia", "Foreign-born": "Yes", "Latitude": 2.039167, "Longitude": 45.341944 }, { "name": "Breel Embolo", "Pos": "FW", "Club": "Rennes (FRA)", "Group": "B", "National Team": "Switzerland", "Birth town": "Yaoundé, Cameroon", "Birth country": "Cameroon", "Foreign-born": "Yes", "Latitude": 3.84, "Longitude": 11.54 }, { "name": "Marvin Keller", "Pos": "GK", "Club": "Young Boys", "Group": "B", "National Team": "Switzerland", "Birth town": "London, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.52028, "Longitude": -0.102654 }, { "name": "Yvon Mvogo", "Pos": "GK", "Club": "Lorient (FRA)", "Group": "B", "National Team": "Switzerland", "Birth town": "Yaoundé, Cameroon", "Birth country": "Cameroon", "Foreign-born": "Yes", "Latitude": 3.88, "Longitude": 11.5 }, { "name": "Achraf Hakimi", "Pos": "DF", "Club": "Paris Saint-Germain (FRA)", "Group": "C", "National Team": "Morocco", "Birth town": "Getafe, Madrid, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 40.304722, "Longitude": -3.731111 }, { "name": "Anass Salah-Eddine", "Pos": "DF", "Club": "PSV Eindhoven (NED)", "Group": "C", "National Team": "Morocco", "Birth town": "Amsterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.366691, "Longitude": 4.911575 }, { "name": "Ayoube Amaimouni", "Pos": "FW", "Club": "Eintracht Frankfurt (GER)", "Group": "C", "National Team": "Morocco", "Birth town": "Vic, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 41.930278, "Longitude": 2.254722 }, { "name": "Ayyoub Bouaddi", "Pos": "MF", "Club": "Lille (FRA)", "Group": "C", "National Team": "Morocco", "Birth town": "Senlis, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 49.2081, "Longitude": 2.5875 }, { "name": "Bilal El Khannouss", "Pos": "MF", "Club": "VfB Stuttgart (GER)", "Group": "C", "National Team": "Morocco", "Birth town": "Molenbeek-Saint-Jean, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 50.855837, "Longitude": 4.336467 }, { "name": "Brahim Díaz", "Pos": "FW", "Club": "Real Madrid (ESP)", "Group": "C", "National Team": "Morocco", "Birth town": "Málaga, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 36.719444, "Longitude": -4.42 }, { "name": "Chadi Riad", "Pos": "DF", "Club": "Crystal Palace (ENG)", "Group": "C", "National Team": "Morocco", "Birth town": "Palma, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 39.566667, "Longitude": 2.65 }, { "name": "Chemsdine Talbi", "Pos": "FW", "Club": "Sunderland (ENG)", "Group": "C", "National Team": "Morocco", "Birth town": "Sambreville, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 50.449, "Longitude": 4.6296 }, { "name": "Gessime Yassine", "Pos": "MF", "Club": "Strasbourg (FRA)", "Group": "C", "National Team": "Morocco", "Birth town": "Salon-de-Provence, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 43.6406, "Longitude": 5.0972 }, { "name": "Ismael Saibari", "Pos": "MF", "Club": "PSV Eindhoven (NED)", "Group": "C", "National Team": "Morocco", "Birth town": "Terrassa, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 41.56, "Longitude": 2.02 }, { "name": "Issa Diop", "Pos": "DF", "Club": "Fulham (ENG)", "Group": "C", "National Team": "Morocco", "Birth town": "Toulouse, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 43.6045, "Longitude": 1.444 }, { "name": "Munir Mohamedi", "Pos": "GK", "Club": "RS Berkane", "Group": "C", "National Team": "Morocco", "Birth town": "Melilla, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 35.292222, "Longitude": -2.940833 }, { "name": "Neil El Aynaoui", "Pos": "MF", "Club": "Roma (ITA)", "Group": "C", "National Team": "Morocco", "Birth town": "Nancy, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.6936, "Longitude": 6.1846 }, { "name": "Noussair Mazraoui", "Pos": "DF", "Club": "Manchester United (ENG)", "Group": "C", "National Team": "Morocco", "Birth town": "Leiderdorp, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.166667, "Longitude": 4.533333 }, { "name": "Redouane Halhal", "Pos": "DF", "Club": "Mechelen (BEL)", "Group": "C", "National Team": "Morocco", "Birth town": "Montpellier, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 43.6119, "Longitude": 3.8772 }, { "name": "Samir El Mourabet", "Pos": "MF", "Club": "Strasbourg (FRA)", "Group": "C", "National Team": "Morocco", "Birth town": "Strasbourg, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.583333, "Longitude": 7.745833 }, { "name": "Sofyan Amrabat", "Pos": "MF", "Club": "Real Betis (ESP)", "Group": "C", "National Team": "Morocco", "Birth town": "Huizen, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.3, "Longitude": 5.25 }, { "name": "Yassine Bounou", "Pos": "GK", "Club": "Al-Hilal (KSA)", "Group": "C", "National Team": "Morocco", "Birth town": "Montreal, Quebec, Canada", "Birth country": "Canada", "Foreign-born": "Yes", "Latitude": 45.515, "Longitude": -73.57 }, { "name": "Zakaria El Ouahdi", "Pos": "DF", "Club": "Genk (BEL)", "Group": "C", "National Team": "Morocco", "Birth town": "Hoboken, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 51.178048, "Longitude": 4.35466 }, { "name": "Angus Gunn", "Pos": "GK", "Club": "Nottingham Forest (ENG)", "Group": "C", "National Team": "Scotland", "Birth town": "Norwich, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 52.628611, "Longitude": 1.292778 }, { "name": "Ché Adams", "Pos": "FW", "Club": "Torino (ITA)", "Group": "C", "National Team": "Scotland", "Birth town": "Leicester, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 52.6361, "Longitude": -1.1331 }, { "name": "George Hirst", "Pos": "FW", "Club": "Ipswich Town (ENG)", "Group": "C", "National Team": "Scotland", "Birth town": "Sheffield, South Yorkshire, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 53.380833, "Longitude": -1.470278 }, { "name": "Kieran Tierney", "Pos": "DF", "Club": "Celtic", "Group": "C", "National Team": "Scotland", "Birth town": "Douglas, Isle of Man", "Birth country": "Isle of Man", "Foreign-born": "Yes", "Latitude": 54.15, "Longitude": -4.4775 }, { "name": "Lyndon Dykes", "Pos": "FW", "Club": "Charlton Athletic (ENG)", "Group": "C", "National Team": "Scotland", "Birth town": "Gold Coast, Queensland, Australia", "Birth country": "Australia", "Foreign-born": "Yes", "Latitude": -27.9797, "Longitude": 153.393 }, { "name": "Scott McTominay", "Pos": "MF", "Club": "Napoli (ITA)", "Group": "C", "National Team": "Scotland", "Birth town": "Lancaster, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 54.048889, "Longitude": -2.801389 }, { "name": "Tyler Fletcher", "Pos": "MF", "Club": "Manchester United (ENG)", "Group": "C", "National Team": "Scotland", "Birth town": "Manchester, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 53.480487, "Longitude": -2.248507 }, { "name": "Alexandre Pierre", "Pos": "GK", "Club": "Sochaux (FRA)", "Group": "C", "National Team": "Haiti", "Birth town": "Aubervilliers, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.915111, "Longitude": 2.383518 }, { "name": "Derrick Etienne Jr.", "Pos": "FW", "Club": "Toronto FC (CAN)", "Group": "C", "National Team": "Haiti", "Birth town": "Richmond, Virginia, United States", "Birth country": "United States", "Foreign-born": "Yes", "Latitude": 37.540833, "Longitude": -77.436667 }, { "name": "Dominique Simon", "Pos": "MF", "Club": "Tatran Prešov (SVK)", "Group": "C", "National Team": "Haiti", "Birth town": "Pontoise, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 49.0516, "Longitude": 2.1017 }, { "name": "Duckens Nazon", "Pos": "FW", "Club": "Esteghlal (IRN)", "Group": "C", "National Team": "Haiti", "Birth town": "Châtenay-Malabry, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.7653, "Longitude": 2.2781 }, { "name": "Duke Lacroix", "Pos": "DF", "Club": "Colorado Springs Switchbacks (USA)", "Group": "C", "National Team": "Haiti", "Birth town": "New Egypt, New Jersey, United States", "Birth country": "United States", "Foreign-born": "Yes", "Latitude": 40.065119, "Longitude": -74.52704 }, { "name": "Jean-Kévin Duverne", "Pos": "DF", "Club": "Gent (BEL)", "Group": "C", "National Team": "Haiti", "Birth town": "Paris, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.855, "Longitude": 2.3522 }, { "name": "Jean-Ricner Bellegarde", "Pos": "MF", "Club": "Wolverhampton Wanderers (ENG)", "Group": "C", "National Team": "Haiti", "Birth town": "Colombes, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.925432, "Longitude": 2.254257 }, { "name": "Johny Placide", "Pos": "GK", "Club": "Bastia (FRA)", "Group": "C", "National Team": "Haiti", "Birth town": "Montfermeil, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.900274, "Longitude": 2.567368 }, { "name": "Josué Casimir", "Pos": "FW", "Club": "Auxerre (FRA)", "Group": "C", "National Team": "Haiti", "Birth town": "Baie-Mahault, Guadeloupe, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 16.27, "Longitude": -61.58 }, { "name": "Josué Duverger", "Pos": "GK", "Club": "Cosmos Koblenz (GER)", "Group": "C", "National Team": "Haiti", "Birth town": "Montreal, Quebec, Canada", "Birth country": "Canada", "Foreign-born": "Yes", "Latitude": 45.5, "Longitude": -73.56 }, { "name": "Keeto Thermoncy", "Pos": "DF", "Club": "Young Boys (SUI)", "Group": "C", "National Team": "Haiti", "Birth town": "Fribourg, Switzerland", "Birth country": "Switzerland", "Foreign-born": "Yes", "Latitude": 46.81, "Longitude": 7.156 }, { "name": "Lenny Joseph", "Pos": "FW", "Club": "Ferencváros (HUN)", "Group": "C", "National Team": "Haiti", "Birth town": "Paris, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.8567, "Longitude": 2.345 }, { "name": "Martin Expérience", "Pos": "DF", "Club": "Nancy (FRA)", "Group": "C", "National Team": "Haiti", "Birth town": "Châteaubriant, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 47.7178, "Longitude": -1.375 }, { "name": "Ruben Providence", "Pos": "FW", "Club": "Almere City (NED)", "Group": "C", "National Team": "Haiti", "Birth town": "Lagny-sur-Marne, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.8788, "Longitude": 2.7075 }, { "name": "Wilson Isidor", "Pos": "FW", "Club": "Sunderland (ENG)", "Group": "C", "National Team": "Haiti", "Birth town": "Rennes, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.1147, "Longitude": -1.6794 }, { "name": "Yassin Fortuné", "Pos": "FW", "Club": "Vizela (POR)", "Group": "C", "National Team": "Haiti", "Birth town": "Aubervilliers, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.911613, "Longitude": 2.379827 }, { "name": "Alejandro Zendejas", "Pos": "FW", "Club": "América (MEX)", "Group": "D", "National Team": "United States", "Birth town": "Ciudad Juárez, Chihuahua, Mexico", "Birth country": "Mexico", "Foreign-born": "Yes", "Latitude": 31.745, "Longitude": -106.485 }, { "name": "Antonee Robinson", "Pos": "DF", "Club": "Fulham (ENG)", "Group": "D", "National Team": "United States", "Birth town": "Milton Keynes, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 52.033274, "Longitude": -0.753593 }, { "name": "Giovanni Reyna", "Pos": "MF", "Club": "Borussia Mönchengladbach (GER)", "Group": "D", "National Team": "United States", "Birth town": "Sunderland, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 54.909778, "Longitude": -1.376381 }, { "name": "Malik Tillman", "Pos": "MF", "Club": "Bayer Leverkusen (GER)", "Group": "D", "National Team": "United States", "Birth town": "Nuremberg, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 49.455628, "Longitude": 11.090012 }, { "name": "Sebastian Berhalter", "Pos": "MF", "Club": "Vancouver Whitecaps FC (CAN)", "Group": "D", "National Team": "United States", "Birth town": "London, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.511627, "Longitude": -0.109005 }, { "name": "Sergiño Dest", "Pos": "DF", "Club": "PSV Eindhoven (NED)", "Group": "D", "National Team": "United States", "Birth town": "Almere, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.371407, "Longitude": 5.221939 }, { "name": "Can Uzun", "Pos": "FW", "Club": "Eintracht Frankfurt (GER)", "Group": "D", "National Team": "Turkey", "Birth town": "Regensburg, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 49.015356, "Longitude": 12.092514 }, { "name": "Deniz Gül", "Pos": "FW", "Club": "Porto (POR)", "Group": "D", "National Team": "Turkey", "Birth town": "Stockholm, Sweden", "Birth country": "Sweden", "Foreign-born": "Yes", "Latitude": 59.331964, "Longitude": 18.081093 }, { "name": "Ferdi Kadıoğlu", "Pos": "DF", "Club": "Brighton & Hove Albion (ENG)", "Group": "D", "National Team": "Turkey", "Birth town": "Arnhem, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.983333, "Longitude": 5.916667 }, { "name": "Hakan Çalhanoğlu", "Pos": "MF", "Club": "Inter Milan (ITA)", "Group": "D", "National Team": "Turkey", "Birth town": "Mannheim, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 49.482178, "Longitude": 8.475952 }, { "name": "Kaan Ayhan", "Pos": "MF", "Club": "Galatasaray", "Group": "D", "National Team": "Turkey", "Birth town": "Gelsenkirchen, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 51.508742, "Longitude": 7.100773 }, { "name": "Kenan Yıldız", "Pos": "FW", "Club": "Juventus (ITA)", "Group": "D", "National Team": "Turkey", "Birth town": "Regensburg, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 49.022336, "Longitude": 12.10556 }, { "name": "Mert Müldür", "Pos": "DF", "Club": "Fenerbahçe", "Group": "D", "National Team": "Turkey", "Birth town": "Vienna, Austria", "Birth country": "Austria", "Foreign-born": "Yes", "Latitude": 48.213, "Longitude": 16.36 }, { "name": "Oğuz Aydın", "Pos": "FW", "Club": "Fenerbahçe", "Group": "D", "National Team": "Turkey", "Birth town": "The Hague, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.08457, "Longitude": 4.31282 }, { "name": "Orkun Kökçü", "Pos": "MF", "Club": "Beşiktaş", "Group": "D", "National Team": "Turkey", "Birth town": "Haarlem, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.382934, "Longitude": 4.631081 }, { "name": "Salih Özcan", "Pos": "MF", "Club": "Borussia Dortmund (GER)", "Group": "D", "National Team": "Turkey", "Birth town": "Cologne, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 50.935498, "Longitude": 6.963959 }, { "name": "Andrés Cubas", "Pos": "MF", "Club": "Vancouver Whitecaps FC (CAN)", "Group": "D", "National Team": "Paraguay", "Birth town": "Aristóbulo del Valle, Argentina", "Birth country": "Argentina", "Foreign-born": "Yes", "Latitude": -27.116667, "Longitude": -54.916667 }, { "name": "Gastón Olveira", "Pos": "GK", "Club": "Olimpia", "Group": "D", "National Team": "Paraguay", "Birth town": "Conciliación, Montevideo, Uruguay", "Birth country": "Uruguay", "Foreign-born": "Yes", "Latitude": -34.823611, "Longitude": -56.231944 }, { "name": "Juan José Cáceres", "Pos": "DF", "Club": "Dynamo Moscow (RUS)", "Group": "D", "National Team": "Paraguay", "Birth town": "Isla Maciel, Argentina", "Birth country": "Argentina", "Foreign-born": "Yes", "Latitude": -34.64515, "Longitude": -58.35295 }, { "name": "Kaku", "Pos": "FW", "Club": "Al-Ain (UAE)", "Group": "D", "National Team": "Paraguay", "Birth town": "Ciudadela, Argentina", "Birth country": "Argentina", "Foreign-born": "Yes", "Latitude": -34.631513, "Longitude": -58.544598 }, { "name": "Maurício", "Pos": "MF", "Club": "Palmeiras (BRA)", "Group": "D", "National Team": "Paraguay", "Birth town": "São Paulo, Brazil", "Birth country": "Brazil", "Foreign-born": "Yes", "Latitude": -23.536291, "Longitude": -46.618423 }, { "name": "Alessandro Circati", "Pos": "DF", "Club": "Parma (ITA)", "Group": "D", "National Team": "Australia", "Birth town": "Fidenza, Italy", "Birth country": "Italy", "Foreign-born": "Yes", "Latitude": 44.866667, "Longitude": 10.066667 }, { "name": "Awer Mabil", "Pos": "FW", "Club": "Castellón (ESP)", "Group": "D", "National Team": "Australia", "Birth town": "Kakuma, Kenya", "Birth country": "Kenya", "Foreign-born": "Yes", "Latitude": 3.716667, "Longitude": 34.866667 }, { "name": "Cameron Burgess", "Pos": "DF", "Club": "Swansea City (WAL)", "Group": "D", "National Team": "Australia", "Birth town": "Aberdeen, Scotland", "Birth country": "Scotland", "Foreign-born": "Yes", "Latitude": 57.149092, "Longitude": -2.093925 }, { "name": "Harry Souttar", "Pos": "DF", "Club": "Leicester City (ENG)", "Group": "D", "National Team": "Australia", "Birth town": "Aberdeen, Scotland", "Birth country": "Scotland", "Foreign-born": "Yes", "Latitude": 57.143504, "Longitude": -2.124138 }, { "name": "Miloš Degenek", "Pos": "DF", "Club": "APOEL  (CYP)", "Group": "D", "National Team": "Australia", "Birth town": "Knin, Croatia", "Birth country": "Croatia", "Foreign-born": "Yes", "Latitude": 49.395278, "Longitude": 13.295 }, { "name": "Mohamed Touré", "Pos": "FW", "Club": "Norwich City (ENG)", "Group": "D", "National Team": "Australia", "Birth town": "Conakry, Guinea", "Birth country": "Guinea", "Foreign-born": "Yes", "Latitude": 9.509167, "Longitude": -13.712222 }, { "name": "Nestory Irankunda", "Pos": "FW", "Club": "Watford (ENG)", "Group": "D", "National Team": "Australia", "Birth town": "Kigoma, Tanzania", "Birth country": "Tanzania", "Foreign-born": "Yes", "Latitude": -4.883333, "Longitude": 29.633333 }, { "name": "Paul Okon-Engstler", "Pos": "MF", "Club": "Sydney FC", "Group": "D", "National Team": "Australia", "Birth town": "Ostend, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 51.229893, "Longitude": 2.920818 }, { "name": "Waldemar Anton", "Pos": "DF", "Club": "Borussia Dortmund", "Group": "E", "National Team": "Germany", "Birth town": "Olmaliq, Uzbekistan", "Birth country": "Uzbekistan", "Foreign-born": "Yes", "Latitude": 40.85, "Longitude": 69.6 }, { "name": "Hernán Galíndez", "Pos": "GK", "Club": "Huracán (ARG)", "Group": "E", "National Team": "Ecuador", "Birth town": "Rosario, Argentina", "Birth country": "Argentina", "Foreign-born": "Yes", "Latitude": -32.9575, "Longitude": -60.639444 }, { "name": "Jeremy Arévalo", "Pos": "FW", "Club": "VfB Stuttgart (GER)", "Group": "E", "National Team": "Ecuador", "Birth town": "Maliaño, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 43.418611, "Longitude": -3.835 }, { "name": "John Yeboah", "Pos": "MF", "Club": "Venezia (ITA)", "Group": "E", "National Team": "Ecuador", "Birth town": "Hamburg, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 53.55, "Longitude": 10.0 }, { "name": "Alban Lafont", "Pos": "GK", "Club": "Panathinaikos (GRE)", "Group": "E", "National Team": "Côte d'Ivoire", "Birth town": "Ouagadougou, Burkina Faso", "Birth country": "Burkina Faso", "Foreign-born": "Yes", "Latitude": 12.368611, "Longitude": -1.5275 }, { "name": "Ange-Yoan Bonny", "Pos": "FW", "Club": "Inter Milan (ITA)", "Group": "E", "National Team": "Côte d'Ivoire", "Birth town": "Aubervilliers, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.911106, "Longitude": 2.385321 }, { "name": "Elye Wahi", "Pos": "FW", "Club": "Nice (FRA)", "Group": "E", "National Team": "Côte d'Ivoire", "Birth town": "Courcouronnes, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.6173, "Longitude": 2.4086 }, { "name": "Evan Ndicka", "Pos": "DF", "Club": "Roma (ITA)", "Group": "E", "National Team": "Côte d'Ivoire", "Birth town": "20th arrondissement, Paris, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.865, "Longitude": 2.399167 }, { "name": "Evann Guessand", "Pos": "FW", "Club": "Crystal Palace (ENG)", "Group": "E", "National Team": "Côte d'Ivoire", "Birth town": "Ajaccio, Corse-du-Sud, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 41.9267, "Longitude": 8.7369 }, { "name": "Guéla Doué", "Pos": "DF", "Club": "Strasbourg (FRA)", "Group": "E", "National Team": "Côte d'Ivoire", "Birth town": "Angers, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 47.473612, "Longitude": -0.554167 }, { "name": "Nicolas Pépé", "Pos": "FW", "Club": "Villarreal (ESP)", "Group": "E", "National Team": "Côte d'Ivoire", "Birth town": "Mantes-la-Jolie, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.9908, "Longitude": 1.7172 }, { "name": "Seko Fofana", "Pos": "MF", "Club": "Porto (POR)", "Group": "E", "National Team": "Côte d'Ivoire", "Birth town": "Paris, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.85, "Longitude": 2.35 }, { "name": "Yahia Fofana", "Pos": "GK", "Club": "Çaykur Rizespor (TUR)", "Group": "E", "National Team": "Côte d'Ivoire", "Birth town": "19th arrondissement, Paris, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.89, "Longitude": 2.385 }, { "name": "Ar'jany Martha", "Pos": "MF", "Club": "Rotherham United (ENG)", "Group": "E", "National Team": "Curaçao", "Birth town": "Rotterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.918862, "Longitude": 4.481392 }, { "name": "Armando Obispo", "Pos": "DF", "Club": "PSV Eindhoven (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Boxtel, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.583333, "Longitude": 5.333333 }, { "name": "Brandley Kuwas", "Pos": "FW", "Club": "Volendam (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Hoorn, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.65, "Longitude": 5.066667 }, { "name": "Deveron Fonville", "Pos": "DF", "Club": "NEC (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Nieuwegein, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.033333, "Longitude": 5.083333 }, { "name": "Eloy Room", "Pos": "GK", "Club": "Miami FC (USA)", "Group": "E", "National Team": "Curaçao", "Birth town": "Nijmegen, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.8475, "Longitude": 5.8625 }, { "name": "Gervane Kastaneer", "Pos": "FW", "Club": "Terengganu (MAS)", "Group": "E", "National Team": "Curaçao", "Birth town": "Rotterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.922567, "Longitude": 4.481564 }, { "name": "Godfried Roemeratoe", "Pos": "MF", "Club": "RKC Waalwijk (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Oost-Souburg, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.463611, "Longitude": 3.600833 }, { "name": "Jearl Margaritha", "Pos": "FW", "Club": "Beveren (BEL)", "Group": "E", "National Team": "Curaçao", "Birth town": "Groningen, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 53.214977, "Longitude": 6.562271 }, { "name": "Jeremy Antonisse", "Pos": "FW", "Club": "Kifisia (GRE)", "Group": "E", "National Team": "Curaçao", "Birth town": "Rosmalen, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.716667, "Longitude": 5.366667 }, { "name": "Joshua Brenet", "Pos": "DF", "Club": "Kayserispor (TUR)", "Group": "E", "National Team": "Curaçao", "Birth town": "Kerkrade, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 50.859819, "Longitude": 6.05999 }, { "name": "Juninho Bacuna", "Pos": "MF", "Club": "Volendam (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Groningen, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 53.223405, "Longitude": 6.578407 }, { "name": "Jürgen Locadia", "Pos": "FW", "Club": "Miami FC (USA)", "Group": "E", "National Team": "Curaçao", "Birth town": "Emmen, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.783333, "Longitude": 6.9 }, { "name": "Juriën Gaari", "Pos": "DF", "Club": "Abha (KSA)", "Group": "E", "National Team": "Curaçao", "Birth town": "Kerkrade, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 50.870761, "Longitude": 6.0569 }, { "name": "Kenji Gorré", "Pos": "FW", "Club": "Maccabi Haifa (ISR)", "Group": "E", "National Team": "Curaçao", "Birth town": "Spijkenisse, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.849565, "Longitude": 4.334621 }, { "name": "Kevin Felida", "Pos": "MF", "Club": "Den Bosch (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Spijkenisse, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.844899, "Longitude": 4.326897 }, { "name": "Leandro Bacuna", "Pos": "MF", "Club": "Iğdır (TUR)", "Group": "E", "National Team": "Curaçao", "Birth town": "Groningen, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 53.226488, "Longitude": 6.554375 }, { "name": "Livano Comenencia", "Pos": "MF", "Club": "Zürich (SUI)", "Group": "E", "National Team": "Curaçao", "Birth town": "Breda, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.584963, "Longitude": 4.768925 }, { "name": "Riechedly Bazoer", "Pos": "DF", "Club": "Konyaspor (TUR)", "Group": "E", "National Team": "Curaçao", "Birth town": "Utrecht, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.084359, "Longitude": 5.115166 }, { "name": "Roshon van Eijma", "Pos": "DF", "Club": "RKC Waalwijk (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Tilburg, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.5575, "Longitude": 5.0906 }, { "name": "Sherel Floranus", "Pos": "DF", "Club": "PEC Zwolle (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Rotterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.919285, "Longitude": 4.486713 }, { "name": "Shurandy Sambo", "Pos": "DF", "Club": "Sparta Rotterdam (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Geldrop, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.422222, "Longitude": 5.557778 }, { "name": "Sontje Hansen", "Pos": "FW", "Club": "Middlesbrough (ENG)", "Group": "E", "National Team": "Curaçao", "Birth town": "Hoorn, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.65, "Longitude": 5.066667 }, { "name": "Trevor Doornbusch", "Pos": "GK", "Club": "VVV-Venlo (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Haarlem, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.389849, "Longitude": 4.641037 }, { "name": "Tyrese Noslin", "Pos": "MF", "Club": "Telstar (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Amsterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.375914, "Longitude": 4.876213 }, { "name": "Tyrick Bodak", "Pos": "GK", "Club": "Telstar (NED)", "Group": "E", "National Team": "Curaçao", "Birth town": "Almere, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.361764, "Longitude": 5.208206 }, { "name": "Guus Til", "Pos": "MF", "Club": "PSV Eindhoven", "Group": "F", "National Team": "Netherlands", "Birth town": "Samfya, Zambia", "Birth country": "Zambia", "Foreign-born": "Yes", "Latitude": -11.3615, "Longitude": 29.5546 }, { "name": "Zion Suzuki", "Pos": "GK", "Club": "Parma (ITA)", "Group": "F", "National Team": "Japan", "Birth town": "Newark, New Jersey, United States", "Birth country": "United States", "Foreign-born": "Yes", "Latitude": 40.7356, "Longitude": -74.1722 }, { "name": "Adem Arous", "Pos": "DF", "Club": "Kasımpaşa (TUR)", "Group": "F", "National Team": "Tunisia", "Birth town": "Medina, Saudi Arabia", "Birth country": "Saudi Arabia", "Foreign-born": "Yes", "Latitude": 24.47, "Longitude": 39.61 }, { "name": "Anis Ben Slimane", "Pos": "MF", "Club": "Norwich City (ENG)", "Group": "F", "National Team": "Tunisia", "Birth town": "Copenhagen, Denmark", "Birth country": "Denmark", "Foreign-born": "Yes", "Latitude": 55.676111, "Longitude": 12.568333 }, { "name": "Dylan Bronn", "Pos": "DF", "Club": "Servette (SUI)", "Group": "F", "National Team": "Tunisia", "Birth town": "Cannes, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 43.5513, "Longitude": 7.0128 }, { "name": "Elias Achouri", "Pos": "FW", "Club": "Copenhagen (DEN)", "Group": "F", "National Team": "Tunisia", "Birth town": "Saint-Denis, Réunion, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": -20.8789, "Longitude": 55.4481 }, { "name": "Elias Saad", "Pos": "FW", "Club": "Hannover 96 (GER)", "Group": "F", "National Team": "Tunisia", "Birth town": "Wilhelmsburg, Hamburg, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 53.495, "Longitude": 10.011111 }, { "name": "Ellyes Skhiri", "Pos": "MF", "Club": "Eintracht Frankfurt (GER)", "Group": "F", "National Team": "Tunisia", "Birth town": "Lunel, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 43.6778, "Longitude": 4.1361 }, { "name": "Hannibal Mejbri", "Pos": "MF", "Club": "Burnley (ENG)", "Group": "F", "National Team": "Tunisia", "Birth town": "Ivry-sur-Seine, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.81212, "Longitude": 2.38393 }, { "name": "Ismaël Gharbi", "Pos": "MF", "Club": "FC Augsburg (GER)", "Group": "F", "National Team": "Tunisia", "Birth town": "Paris, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.853, "Longitude": 2.358 }, { "name": "Montassar Talbi", "Pos": "DF", "Club": "Lorient (FRA)", "Group": "F", "National Team": "Tunisia", "Birth town": "13th arrondissement, Paris, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.832222, "Longitude": 2.355556 }, { "name": "Moutaz Neffati", "Pos": "DF", "Club": "IFK Norrköping (SWE)", "Group": "F", "National Team": "Tunisia", "Birth town": "Norrköping, Sweden", "Birth country": "Sweden", "Foreign-born": "Yes", "Latitude": 58.599033, "Longitude": 16.198654 }, { "name": "Omar Rekik", "Pos": "DF", "Club": "Maribor (SVN)", "Group": "F", "National Team": "Tunisia", "Birth town": "Helmond, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.48058, "Longitude": 5.66 }, { "name": "Rani Khedira", "Pos": "MF", "Club": "Union Berlin (GER)", "Group": "F", "National Team": "Tunisia", "Birth town": "Stuttgart, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 48.77, "Longitude": 9.175 }, { "name": "Rayan Elloumi", "Pos": "FW", "Club": "Vancouver Whitecaps FC (CAN)", "Group": "F", "National Team": "Tunisia", "Birth town": "St. Albert, Alberta, Canada", "Birth country": "Canada", "Foreign-born": "Yes", "Latitude": 53.636944, "Longitude": -113.620278 }, { "name": "Sebastian Tounekti", "Pos": "FW", "Club": "Celtic (SCO)", "Group": "F", "National Team": "Tunisia", "Birth town": "Tromsø, Norway", "Birth country": "Norway", "Foreign-born": "Yes", "Latitude": 69.6517, "Longitude": 18.9556 }, { "name": "Yan Valery", "Pos": "DF", "Club": "Young Boys (SUI)", "Group": "F", "National Team": "Tunisia", "Birth town": "Champigny-sur-Marne, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.8172, "Longitude": 2.5156 }, { "name": "Amadou Onana", "Pos": "MF", "Club": "Aston Villa (ENG)", "Group": "G", "National Team": "Belgium", "Birth town": "Colobane, Dakar, Senegal", "Birth country": "Senegal", "Foreign-born": "Yes", "Latitude": 14.694586, "Longitude": -17.44642 }, { "name": "Dennis Eckert", "Pos": "FW", "Club": "Standard Liège (BEL)", "Group": "G", "National Team": "Iran", "Birth town": "Bonn, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 50.7353, "Longitude": 7.1022 }, { "name": "Saman Ghoddos", "Pos": "MF", "Club": "Kalba (UAE)", "Group": "G", "National Team": "Iran", "Birth town": "Oxie, Malmö, Sweden", "Birth country": "Sweden", "Foreign-born": "Yes", "Latitude": 55.548611, "Longitude": 13.098611 }, { "name": "Haissem Hassan", "Pos": "FW", "Club": "Oviedo (ESP)", "Group": "G", "National Team": "Egypt", "Birth town": "Bagnolet, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.8692, "Longitude": 2.4181 }, { "name": "Alex Rufer", "Pos": "MF", "Club": "Wellington Phoenix", "Group": "G", "National Team": "New Zealand", "Birth town": "Geneva, Switzerland", "Birth country": "Switzerland", "Foreign-born": "Yes", "Latitude": 46.2, "Longitude": 6.146944 }, { "name": "Callan Elliot", "Pos": "DF", "Club": "Auckland FC", "Group": "G", "National Team": "New Zealand", "Birth town": "Dumfries, Scotland", "Birth country": "Scotland", "Foreign-born": "Yes", "Latitude": 55.072667, "Longitude": -3.600082 }, { "name": "Finn Surman", "Pos": "DF", "Club": "Portland Timbers (USA)", "Group": "G", "National Team": "New Zealand", "Birth town": "Cardiff, Wales", "Birth country": "Wales", "Foreign-born": "Yes", "Latitude": 51.481667, "Longitude": -3.179167 }, { "name": "Joe Bell", "Pos": "MF", "Club": "Viking (NOR)", "Group": "G", "National Team": "New Zealand", "Birth town": "Bristol, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.44716, "Longitude": -2.59346 }, { "name": "Lachlan Bayliss", "Pos": "MF", "Club": "Newcastle Jets (AUS)", "Group": "G", "National Team": "New Zealand", "Birth town": "Darwin, Northern Territory, Australia", "Birth country": "Australia", "Foreign-born": "Yes", "Latitude": -12.438056, "Longitude": 130.841111 }, { "name": "Nando Pijnaker", "Pos": "DF", "Club": "Auckland FC", "Group": "G", "National Team": "New Zealand", "Birth town": "Brummen, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.083333, "Longitude": 6.15 }, { "name": "Tommy Smith", "Pos": "DF", "Club": "Braintree Town (ENG)", "Group": "G", "National Team": "New Zealand", "Birth town": "Macclesfield, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 53.25965, "Longitude": -2.12376 }, { "name": "Aymeric Laporte", "Pos": "DF", "Club": "Athletic Club", "Group": "H", "National Team": "Spain", "Birth town": "Agen, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 44.2049, "Longitude": 0.6212 }, { "name": "Fernando Muslera", "Pos": "GK", "Club": "Estudiantes (ARG)", "Group": "H", "National Team": "Uruguay", "Birth town": "Buenos Aires, Argentina", "Birth country": "Argentina", "Foreign-born": "Yes", "Latitude": -34.598737, "Longitude": -58.4198 }, { "name": "Rodrigo Zalazar", "Pos": "MF", "Club": "Braga (POR)", "Group": "H", "National Team": "Uruguay", "Birth town": "Albacete, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 38.995556, "Longitude": -1.855833 }, { "name": "CJ dos Santos", "Pos": "GK", "Club": "San Diego (USA)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Fox Chase, Philadelphia, Pennsylvania, United States", "Birth country": "United States", "Foreign-born": "Yes", "Latitude": 40.0731, "Longitude": -75.0763 }, { "name": "Dailon Livramento", "Pos": "FW", "Club": "Casa Pia (POR)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Rotterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.92225, "Longitude": 4.469032 }, { "name": "Deroy Duarte", "Pos": "MF", "Club": "Ludogorets Razgrad (BUL)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Rotterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.921191, "Longitude": 4.476757 }, { "name": "Garry Rodrigues", "Pos": "FW", "Club": "Apollon Limassol (CYP)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Rotterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.918862, "Longitude": 4.47298 }, { "name": "Hélio Varela", "Pos": "FW", "Club": "Maccabi Tel Aviv (ISR)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Almada, Portugal", "Birth country": "Portugal", "Foreign-born": "Yes", "Latitude": 38.67, "Longitude": -9.158333 }, { "name": "Jamiro Monteiro", "Pos": "MF", "Club": "PEC Zwolle (NED)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Spangen, Rotterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.9169, "Longitude": 4.43561 }, { "name": "Laros Duarte", "Pos": "MF", "Club": "Puskás Akadémia (HUN)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Rotterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.924684, "Longitude": 4.472294 }, { "name": "Logan Costa", "Pos": "DF", "Club": "Villarreal (ESP)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Saint-Denis, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.9356, "Longitude": 2.3539 }, { "name": "Roberto Lopes", "Pos": "DF", "Club": "Shamrock Rovers (IRL)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Crumlin, Ireland", "Birth country": "Ireland", "Foreign-born": "Yes", "Latitude": 53.322778, "Longitude": -6.315 }, { "name": "Sidny Lopes Cabral", "Pos": "DF", "Club": "Benfica (POR)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Rotterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 51.923838, "Longitude": 4.47607 }, { "name": "Steven Moreira", "Pos": "DF", "Club": "Columbus Crew (USA)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Noisy-le-Grand, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.8478, "Longitude": 2.5528 }, { "name": "Telmo Arcanjo", "Pos": "MF", "Club": "Vitória de Guimarães (POR)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Lisbon, Portugal", "Birth country": "Portugal", "Foreign-born": "Yes", "Latitude": 38.715, "Longitude": -9.15 }, { "name": "Wagner Pina", "Pos": "DF", "Club": "Trabzonspor (TUR)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Vialonga, Lisbon, Portugal", "Birth country": "Portugal", "Foreign-born": "Yes", "Latitude": 38.874, "Longitude": -9.082 }, { "name": "Willy Semedo", "Pos": "FW", "Club": "Omonia (CYP)", "Group": "H", "National Team": "Cabo Verde", "Birth town": "Montfermeil, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.897904, "Longitude": 2.563248 }, { "name": "Brice Samba", "Pos": "GK", "Club": "Rennes", "Group": "I", "National Team": "France", "Birth town": "Linzolo, Republic of the Congo", "Birth country": "Republic of the Congo", "Foreign-born": "Yes", "Latitude": -4.413611, "Longitude": 15.106944 }, { "name": "Marcus Thuram", "Pos": "FW", "Club": "Inter Milan (ITA)", "Group": "I", "National Team": "France", "Birth town": "Parma, Italy", "Birth country": "Italy", "Foreign-born": "Yes", "Latitude": 44.801472, "Longitude": 10.328 }, { "name": "Michael Olise", "Pos": "FW", "Club": "Bayern Munich (GER)", "Group": "I", "National Team": "France", "Birth town": "Hammersmith, London, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.4928, "Longitude": -0.2229 }, { "name": "Erling Haaland", "Pos": "FW", "Club": "Manchester City (ENG)", "Group": "I", "National Team": "Norway", "Birth town": "Leeds, West Yorkshire, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 53.7975, "Longitude": -1.543611 }, { "name": "Thelo Aasgaard", "Pos": "MF", "Club": "Rangers (SCO)", "Group": "I", "National Team": "Norway", "Birth town": "Mossley Hill, Liverpool, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 53.379, "Longitude": -2.918 }, { "name": "Antoine Mendy", "Pos": "DF", "Club": "Nice (FRA)", "Group": "I", "National Team": "Senegal", "Birth town": "Marseille, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 43.2964, "Longitude": 5.37 }, { "name": "Édouard Mendy", "Pos": "GK", "Club": "Al-Ahli (KSA)", "Group": "I", "National Team": "Senegal", "Birth town": "Montivilliers, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 49.5469, "Longitude": 0.1889 }, { "name": "Ibrahim Mbaye", "Pos": "FW", "Club": "Paris Saint-Germain (FRA)", "Group": "I", "National Team": "Senegal", "Birth town": "Trappes, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.7775, "Longitude": 2.0025 }, { "name": "Iliman Ndiaye", "Pos": "FW", "Club": "Everton (ENG)", "Group": "I", "National Team": "Senegal", "Birth town": "Rouen, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 49.437324, "Longitude": 1.086273 }, { "name": "Ismail Jakobs", "Pos": "DF", "Club": "Galatasaray (TUR)", "Group": "I", "National Team": "Senegal", "Birth town": "Cologne, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 50.933335, "Longitude": 6.948853 }, { "name": "Kalidou Koulibaly", "Pos": "DF", "Club": "Al-Hilal (KSA)", "Group": "I", "National Team": "Senegal", "Birth town": "Saint-Dié-des-Vosges, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.28, "Longitude": 6.95 }, { "name": "Mamadou Sarr", "Pos": "DF", "Club": "Chelsea (ENG)", "Group": "I", "National Team": "Senegal", "Birth town": "Martigues, Bouches-du-Rhône, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 43.4053, "Longitude": 5.0475 }, { "name": "Mory Diaw", "Pos": "GK", "Club": "Le Havre (FRA)", "Group": "I", "National Team": "Senegal", "Birth town": "Poissy, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.9294, "Longitude": 2.0456 }, { "name": "Moussa Niakhaté", "Pos": "DF", "Club": "Lyon (FRA)", "Group": "I", "National Team": "Senegal", "Birth town": "Roubaix, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 50.6901, "Longitude": 3.18167 }, { "name": "Nicolas Jackson", "Pos": "FW", "Club": "Bayern Munich (GER)", "Group": "I", "National Team": "Senegal", "Birth town": "Banjul, The Gambia", "Birth country": "The Gambia", "Foreign-born": "Yes", "Latitude": 13.454167, "Longitude": -16.575278 }, { "name": "Pape Gueye", "Pos": "MF", "Club": "Villarreal (ESP)", "Group": "I", "National Team": "Senegal", "Birth town": "Montreuil, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.8611, "Longitude": 2.4436 }, { "name": "Yehvann Diouf", "Pos": "GK", "Club": "Nice (FRA)", "Group": "I", "National Team": "Senegal", "Birth town": "Montreuil, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.8611, "Longitude": 2.4436 }, { "name": "Ahmed Qasem", "Pos": "MF", "Club": "Nashville SC (USA)", "Group": "I", "National Team": "Iraq", "Birth town": "Motala, Sweden", "Birth country": "Sweden", "Foreign-born": "Yes", "Latitude": 58.535, "Longitude": 15.04 }, { "name": "Amir Al-Ammari", "Pos": "MF", "Club": "Cracovia (POL)", "Group": "I", "National Team": "Iraq", "Birth town": "Jönköping, Sweden", "Birth country": "Sweden", "Foreign-born": "Yes", "Latitude": 57.782778, "Longitude": 14.160556 }, { "name": "Frans Putros", "Pos": "DF", "Club": "Persib (IDN)", "Group": "I", "National Team": "Iraq", "Birth town": "Aarhus, Denmark", "Birth country": "Denmark", "Foreign-born": "Yes", "Latitude": 56.1572, "Longitude": 10.2107 }, { "name": "Hussein Ali", "Pos": "DF", "Club": "Pogoń Szczecin (POL)", "Group": "I", "National Team": "Iraq", "Birth town": "Malmö, Sweden", "Birth country": "Sweden", "Foreign-born": "Yes", "Latitude": 55.602887, "Longitude": 12.994423 }, { "name": "Kevin Yakob", "Pos": "MF", "Club": "Aarhus GF (DEN)", "Group": "I", "National Team": "Iraq", "Birth town": "Gothenburg, Sweden", "Birth country": "Sweden", "Foreign-born": "Yes", "Latitude": 57.716619, "Longitude": 11.975098 }, { "name": "Marko Farji", "Pos": "MF", "Club": "Venezia (ITA)", "Group": "I", "National Team": "Iraq", "Birth town": "Grimstad, Norway", "Birth country": "Norway", "Foreign-born": "Yes", "Latitude": 58.341946, "Longitude": 8.59261 }, { "name": "Merchas Doski", "Pos": "DF", "Club": "Viktoria Plzeň (CZE)", "Group": "I", "National Team": "Iraq", "Birth town": "Hanover, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 52.366667, "Longitude": 9.716667 }, { "name": "Youssef Amyn", "Pos": "MF", "Club": "AEK Larnaca (CYP)", "Group": "I", "National Team": "Iraq", "Birth town": "Essen, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 51.453686, "Longitude": 7.020779 }, { "name": "Zidane Iqbal", "Pos": "MF", "Club": "Utrecht (NED)", "Group": "I", "National Team": "Iraq", "Birth town": "Whalley Range, Manchester, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 53.451878, "Longitude": -2.2597 }, { "name": "Giuliano Simeone", "Pos": "FW", "Club": "Atlético Madrid (ESP)", "Group": "J", "National Team": "Argentina", "Birth town": "Rome, Italy", "Birth country": "Italy", "Foreign-born": "Yes", "Latitude": 41.893333, "Longitude": 12.482778 }, { "name": "Nico Paz", "Pos": "FW", "Club": "Como (ITA)", "Group": "J", "National Team": "Argentina", "Birth town": "Santa Cruz de Tenerife, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 28.466667, "Longitude": -16.25 }, { "name": "Aïssa Mandi", "Pos": "DF", "Club": "Lille (FRA)", "Group": "J", "National Team": "Algeria", "Birth town": "Châlons-en-Champagne, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.9575, "Longitude": 4.365 }, { "name": "Amine Gouiri", "Pos": "FW", "Club": "Marseille (FRA)", "Group": "J", "National Team": "Algeria", "Birth town": "Bourgoin-Jallieu, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 45.5861, "Longitude": 5.2736 }, { "name": "Anis Hadj Moussa", "Pos": "FW", "Club": "Feyenoord (NED)", "Group": "J", "National Team": "Algeria", "Birth town": "Paris, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.86, "Longitude": 2.355 }, { "name": "Farès Chaïbi", "Pos": "MF", "Club": "Eintracht Frankfurt (GER)", "Group": "J", "National Team": "Algeria", "Birth town": "Bron, Lyon, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 45.7394, "Longitude": 4.9139 }, { "name": "Farès Ghedjemis", "Pos": "FW", "Club": "Frosinone (ITA)", "Group": "J", "National Team": "Algeria", "Birth town": "Montreuil, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.865, "Longitude": 2.4436 }, { "name": "Houssem Aouar", "Pos": "MF", "Club": "Al-Ittihad (KSA)", "Group": "J", "National Team": "Algeria", "Birth town": "Le Tonkin, Lyon, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 45.7743, "Longitude": 4.86525 }, { "name": "Ibrahim Maza", "Pos": "MF", "Club": "Bayer Leverkusen (GER)", "Group": "J", "National Team": "Algeria", "Birth town": "Berlin, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 52.566667, "Longitude": 13.333333 }, { "name": "Jaouen Hadjam", "Pos": "DF", "Club": "Young Boys (SUI)", "Group": "J", "National Team": "Algeria", "Birth town": "14th arrondissement, Paris, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.835, "Longitude": 2.33 }, { "name": "Luca Zidane", "Pos": "GK", "Club": "Granada (ESP)", "Group": "J", "National Team": "Algeria", "Birth town": "Aix-en-Provence, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 43.526304, "Longitude": 5.445429 }, { "name": "Melvin Mastil", "Pos": "GK", "Club": "Stade Nyonnais (SUI)", "Group": "J", "National Team": "Algeria", "Birth town": "Thonon-les-Bains, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 46.3627, "Longitude": 6.475 }, { "name": "Nabil Bentaleb", "Pos": "MF", "Club": "Lille (FRA)", "Group": "J", "National Team": "Algeria", "Birth town": "Lille, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 50.642712, "Longitude": 3.057976 }, { "name": "Rafik Belghali", "Pos": "DF", "Club": "Hellas Verona (ITA)", "Group": "J", "National Team": "Algeria", "Birth town": "Leuven, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 50.883333, "Longitude": 4.7 }, { "name": "Ramiz Zerrouki", "Pos": "MF", "Club": "Twente (NED)", "Group": "J", "National Team": "Algeria", "Birth town": "Amsterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.377905, "Longitude": 4.891491 }, { "name": "Rayan Aït-Nouri", "Pos": "DF", "Club": "Manchester City (ENG)", "Group": "J", "National Team": "Algeria", "Birth town": "Montreuil, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.86, "Longitude": 2.44 }, { "name": "Riyad Mahrez", "Pos": "FW", "Club": "Al-Ahli (KSA)", "Group": "J", "National Team": "Algeria", "Birth town": "Clichy, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.9044, "Longitude": 2.3064 }, { "name": "Samir Chergui", "Pos": "DF", "Club": "Paris FC (FRA)", "Group": "J", "National Team": "Algeria", "Birth town": "Arpajon, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.5901, "Longitude": 2.2476 }, { "name": "Ali Azaizeh", "Pos": "FW", "Club": "Al-Shabab (KSA)", "Group": "J", "National Team": "Jordan", "Birth town": "Germany (town not specified)", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 50.765997, "Longitude": 8.085938 }, { "name": "Mo Abualnadi", "Pos": "DF", "Club": "Selangor (MAS)", "Group": "J", "National Team": "Jordan", "Birth town": "Overland Park, Kansas, United States", "Birth country": "United States", "Foreign-born": "Yes", "Latitude": 38.926372, "Longitude": -94.67423 }, { "name": "Mohammad Abu Hasheesh", "Pos": "LM", "Club": "Zakho(IRQ)", "Group": "J", "National Team": "Jordan", "Birth town": "Baghdad,Iraq.", "Birth country": "Iraq", "Foreign-born": "", "Latitude": 33.31, "Longitude": 44.36 }, { "name": "Diogo Costa", "Pos": "GK", "Club": "Porto", "Group": "K", "National Team": "Portugal", "Birth town": "Rothrist, Switzerland", "Birth country": "Switzerland", "Foreign-born": "Yes", "Latitude": 47.3, "Longitude": 7.883333 }, { "name": "Matheus Nunes", "Pos": "DF", "Club": "Manchester City (ENG)", "Group": "K", "National Team": "Portugal", "Birth town": "Rio de Janeiro, Brazil", "Birth country": "Brazil", "Foreign-born": "Yes", "Latitude": -22.911111, "Longitude": -43.205556 }, { "name": "Aaron Tshibola", "Pos": "MF", "Club": "Kilmarnock (SCO)", "Group": "K", "National Team": "DR Congo", "Birth town": "Beckton, Newham, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.5146, "Longitude": 0.0673 }, { "name": "Aaron Wan-Bissaka", "Pos": "DF", "Club": "West Ham United (ENG)", "Group": "K", "National Team": "DR Congo", "Birth town": "Croydon, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.379388, "Longitude": -0.094242 }, { "name": "Arthur Masuaku", "Pos": "DF", "Club": "Lens (FRA)", "Group": "K", "National Team": "DR Congo", "Birth town": "Lille, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 50.629647, "Longitude": 3.048706 }, { "name": "Cédric Bakambu", "Pos": "FW", "Club": "Real Betis (ESP)", "Group": "K", "National Team": "DR Congo", "Birth town": "Vitry-sur-Seine, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.7875, "Longitude": 2.3928 }, { "name": "Charles Pickel", "Pos": "MF", "Club": "Espanyol (ESP)", "Group": "K", "National Team": "DR Congo", "Birth town": "Solothurn, Switzerland", "Birth country": "Switzerland", "Foreign-born": "Yes", "Latitude": 47.208333, "Longitude": 7.537222 }, { "name": "Dylan Batubinsika", "Pos": "DF", "Club": "AEL (GRE)", "Group": "K", "National Team": "DR Congo", "Birth town": "Cergy-Pontoise, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 49.036111, "Longitude": 2.063056 }, { "name": "Gaël Kakuta", "Pos": "MF", "Club": "AEL (GRE)", "Group": "K", "National Team": "DR Congo", "Birth town": "Lille, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 50.63226, "Longitude": 3.071022 }, { "name": "Gédéon Kalulu", "Pos": "DF", "Club": "Aris Limassol (CYP)", "Group": "K", "National Team": "DR Congo", "Birth town": "8th arrondissement, Lyon, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 45.734722, "Longitude": 4.868056 }, { "name": "Joris Kayembe", "Pos": "DF", "Club": "Genk (BEL)", "Group": "K", "National Team": "DR Congo", "Birth town": "Brussels, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 50.845297, "Longitude": 4.360199 }, { "name": "Lionel Mpasi", "Pos": "GK", "Club": "Le Havre (FRA)", "Group": "K", "National Team": "DR Congo", "Birth town": "Meaux, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.961173, "Longitude": 2.877045 }, { "name": "Matthieu Epolo", "Pos": "GK", "Club": "Standard Liège (BEL)", "Group": "K", "National Team": "DR Congo", "Birth town": "Brussels, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 50.84237, "Longitude": 4.349213 }, { "name": "Nathanaël Mbuku", "Pos": "FW", "Club": "Montpellier (FRA)", "Group": "K", "National Team": "DR Congo", "Birth town": "Villeneuve-Saint-Georges, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.73, "Longitude": 2.45 }, { "name": "Ngal'ayel Mukau", "Pos": "MF", "Club": "Lille (FRA)", "Group": "K", "National Team": "DR Congo", "Birth town": "Mechelen, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 51.027778, "Longitude": 4.480556 }, { "name": "Noah Sadiki", "Pos": "MF", "Club": "Sunderland (ENG)", "Group": "K", "National Team": "DR Congo", "Birth town": "Brussels, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 50.848548, "Longitude": 4.348869 }, { "name": "Samuel Moutoussamy", "Pos": "MF", "Club": "Atromitos (GRE)", "Group": "K", "National Team": "DR Congo", "Birth town": "12th arrondissement, Paris, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.840833, "Longitude": 2.388056 }, { "name": "Simon Banza", "Pos": "FW", "Club": "Al Jazira (UAE)", "Group": "K", "National Team": "DR Congo", "Birth town": "Creil, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 49.2583, "Longitude": 2.4833 }, { "name": "Steve Kapuadi", "Pos": "DF", "Club": "Widzew Łódź (POL)", "Group": "K", "National Team": "DR Congo", "Birth town": "Le Mans, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.0077, "Longitude": 0.1984 }, { "name": "Théo Bongonda", "Pos": "FW", "Club": "Spartak Moscow (RUS)", "Group": "K", "National Team": "DR Congo", "Birth town": "Charleroi, Belgium", "Birth country": "Belgium", "Foreign-born": "Yes", "Latitude": 50.408056, "Longitude": 4.4475 }, { "name": "Timothy Fayulu", "Pos": "GK", "Club": "Noah (ARM)", "Group": "K", "National Team": "DR Congo", "Birth town": "Geneva, Switzerland", "Birth country": "Switzerland", "Foreign-born": "Yes", "Latitude": 46.203, "Longitude": 6.145 }, { "name": "Yoane Wissa", "Pos": "FW", "Club": "Newcastle United (ENG)", "Group": "K", "National Team": "DR Congo", "Birth town": "Épinay-sous-Sénart, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.6948, "Longitude": 2.5147 }, { "name": "Utkir Yusupov", "Pos": "GK", "Club": "Navbahor", "Group": "K", "National Team": "Uzbekistan", "Birth town": "Sayram, Kazakh SSR, Soviet Union", "Birth country": "Soviet Union", "Foreign-born": "Yes", "Latitude": 42.3, "Longitude": 69.766667 }, { "name": "Marc Guéhi", "Pos": "DF", "Club": "Manchester City", "Group": "L", "National Team": "England", "Birth town": "Abidjan, Côte d'Ivoire", "Birth country": "Côte d'Ivoire", "Foreign-born": "Yes", "Latitude": 5.314894, "Longitude": -4.002285 }, { "name": "Ante Budimir", "Pos": "FW", "Club": "Osasuna (ESP)", "Group": "L", "National Team": "Croatia", "Birth town": "Zenica, Bosnia and Herzegovina", "Birth country": "Bosnia and Herzegovina", "Foreign-born": "Yes", "Latitude": 44.205, "Longitude": 17.905 }, { "name": "Igor Matanović", "Pos": "FW", "Club": "SC Freiburg (GER)", "Group": "L", "National Team": "Croatia", "Birth town": "Heimfeld, Hamburg, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 53.464014, "Longitude": 9.956239 }, { "name": "Josip Stanišić", "Pos": "DF", "Club": "Bayern Munich (GER)", "Group": "L", "National Team": "Croatia", "Birth town": "Munich, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 48.14, "Longitude": 11.593 }, { "name": "Josip Šutalo", "Pos": "DF", "Club": "Ajax (NED)", "Group": "L", "National Team": "Croatia", "Birth town": "Čapljina, Bosnia and Herzegovina", "Birth country": "Bosnia and Herzegovina", "Foreign-born": "Yes", "Latitude": 43.111828, "Longitude": 17.705483 }, { "name": "Luka Sučić", "Pos": "MF", "Club": "Real Sociedad (ESP)", "Group": "L", "National Team": "Croatia", "Birth town": "Linz, Austria", "Birth country": "Austria", "Foreign-born": "Yes", "Latitude": 48.313, "Longitude": 14.286389 }, { "name": "Marco Pašalić", "Pos": "FW", "Club": "Orlando City (USA)", "Group": "L", "National Team": "Croatia", "Birth town": "Karlsruhe, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 49.010177, "Longitude": 8.395271 }, { "name": "Marin Pongračić", "Pos": "DF", "Club": "Fiorentina (ITA)", "Group": "L", "National Team": "Croatia", "Birth town": "Landshut, Bavaria, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 48.539722, "Longitude": 12.150833 }, { "name": "Mario Pašalić", "Pos": "MF", "Club": "Atalanta (ITA)", "Group": "L", "National Team": "Croatia", "Birth town": "Mainz, Germany", "Birth country": "Germany", "Foreign-born": "Yes", "Latitude": 49.999444, "Longitude": 8.273611 }, { "name": "Martin Baturina", "Pos": "MF", "Club": "Como (ITA)", "Group": "L", "National Team": "Croatia", "Birth town": "Zurich, Switzerland", "Birth country": "Switzerland", "Foreign-born": "Yes", "Latitude": 47.38, "Longitude": 8.53 }, { "name": "Mateo Kovačić", "Pos": "MF", "Club": "Manchester City (ENG)", "Group": "L", "National Team": "Croatia", "Birth town": "Linz, Austria", "Birth country": "Austria", "Foreign-born": "Yes", "Latitude": 48.305833, "Longitude": 14.298 }, { "name": "Petar Sučić", "Pos": "MF", "Club": "Inter Milan (ITA)", "Group": "L", "National Team": "Croatia", "Birth town": "Livno, Bosnia and Herzegovina", "Birth country": "Bosnia and Herzegovina", "Foreign-born": "Yes", "Latitude": 43.82528, "Longitude": 17.00569 }, { "name": "Antoine Semenyo", "Pos": "FW", "Club": "Manchester City (ENG)", "Group": "L", "National Team": "Ghana", "Birth town": "Chelsea, London, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.4875, "Longitude": -0.1684 }, { "name": "Brandon Thomas-Asante", "Pos": "FW", "Club": "Coventry City (ENG)", "Group": "L", "National Team": "Ghana", "Birth town": "Milton Keynes, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 52.047107, "Longitude": -0.772991 }, { "name": "Derrick Luckassen", "Pos": "DF", "Club": "Pafos (CYP)", "Group": "L", "National Team": "Ghana", "Birth town": "Amsterdam, Netherlands", "Birth country": "Netherlands", "Foreign-born": "Yes", "Latitude": 52.358933, "Longitude": 4.900417 }, { "name": "Elisha Owusu", "Pos": "MF", "Club": "Auxerre (FRA)", "Group": "L", "National Team": "Ghana", "Birth town": "Montreuil, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.8611, "Longitude": 2.45 }, { "name": "Iñaki Williams", "Pos": "FW", "Club": "Athletic Club (ESP)", "Group": "L", "National Team": "Ghana", "Birth town": "Bilbao, Spain", "Birth country": "Spain", "Foreign-born": "Yes", "Latitude": 43.256944, "Longitude": -2.923611 }, { "name": "Jerome Opoku", "Pos": "DF", "Club": "İstanbul Başakşehir (TUR)", "Group": "L", "National Team": "Ghana", "Birth town": "Lambeth, England", "Birth country": "England", "Foreign-born": "Yes", "Latitude": 51.49, "Longitude": -0.119 }, { "name": "Jordan Ayew", "Pos": "FW", "Club": "Leicester City (ENG)", "Group": "L", "National Team": "Ghana", "Birth town": "Marseille, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 43.282, "Longitude": 5.377 }, { "name": "Marvin Senaya", "Pos": "DF", "Club": "Auxerre (FRA)", "Group": "L", "National Team": "Ghana", "Birth town": "Saint-Maurice, France", "Birth country": "France", "Foreign-born": "Yes", "Latitude": 48.818, "Longitude": 2.431 }, { "name": "Mike Maignan", "Pos": "GK", "Club": "AC Milan(ITA)", "Group": "I", "National Team": "France", "Birth town": "Cayenne, French Guiana", "Birth country": "French Guiana", "Foreign-born": "Yes", "Latitude": 4.93, "Longitude": -52.33 }];
+        const nationalTeamHubs = { "Algeria": [36.7538, 3.0588], "Argentina": [-34.6037, -58.3816], "Australia": [-35.2809, 149.13], "Belgium": [50.8503, 4.3517], "Bosnia and Herzegovina": [43.8563, 18.4131], "Cabo Verde": [14.933, -23.5133], "Canada": [45.4215, -75.6972], "Croatia": [45.815, 15.9819], "Curaçao": [12.1165, -68.9379], "Côte d'Ivoire": [6.8276, -5.276], "DR Congo": [-4.4419, 15.2663], "Ecuador": [-0.1807, -78.4678], "Egypt": [30.0444, 31.2357], "England": [51.5074, -0.1278], "France": [48.8566, 2.3522], "Germany": [52.52, 13.405], "Ghana": [5.6037, -0.187], "Haiti": [18.5944, -72.3074], "Iran": [35.6892, 51.389], "Iraq": [33.3152, 44.3661], "Japan": [35.6762, 139.6503], "Jordan": [31.9522, 35.9101], "Mexico": [19.4326, -99.1332], "Morocco": [34.0209, -6.8323], "Netherlands": [52.3676, 4.9041], "New Zealand": [-41.2865, 174.7762], "Norway": [59.9139, 10.7522], "Paraguay": [-25.2637, -57.5759], "Portugal": [38.7223, -9.1393], "Qatar": [25.2854, 51.531], "Scotland": [55.9533, -3.1883], "Senegal": [14.7167, -17.4677], "South Korea": [37.5665, 126.978], "Spain": [40.4168, -3.7038], "Switzerland": [46.948, 7.4474], "Tunisia": [36.8065, 10.1815], "Turkey": [39.9334, 32.8597], "United States": [38.9072, -77.0369], "Uruguay": [-34.9011, -56.1645], "Uzbekistan": [41.2995, 69.2401] };
+        const countryCentroids = { "Algeria": [36.7538, 3.0588], "Argentina": [-34.6037, -58.3816], "Australia": [-35.2809, 149.13], "Austria": [48.2082, 16.3738], "Belgium": [50.8503, 4.3517], "Bosnia and Herzegovina": [43.8563, 18.4131], "Brazil": [-15.7801, -47.9292], "Burkina Faso": [12.3686, -1.5275], "Cameroon": [3.848, 11.5021], "Canada": [45.4215, -75.6972], "Colombia": [4.711, -74.0721], "Croatia": [45.815, 15.9819], "Côte d'Ivoire": [6.8276, -5.276], "Denmark": [55.6761, 12.5683], "Egypt": [30.0444, 31.2357], "England": [51.5074, -0.1278], "FR Yugoslavia": [44.7866, 20.4489], "France": [48.8566, 2.3522], "French Guiana": [4.9333, -52.3333], "Germany": [52.52, 13.405], "Ghana": [5.6037, -0.187], "Guinea": [9.6412, -13.5784], "Iraq": [33.3152, 44.3661], "Ireland": [53.3498, -6.2603], "Isle of Man": [54.1453, -4.4828], "Italy": [41.9028, 12.4964], "Kenya": [-1.2921, 36.8219], "Mexico": [19.4326, -99.1332], "Netherlands": [52.3676, 4.9041], "Nigeria": [9.0765, 7.3986], "Norway": [59.9139, 10.7522], "Portugal": [38.7223, -9.1393], "Republic of the Congo": [-4.2634, 15.2828], "Saudi Arabia": [24.7136, 46.6753], "Scotland": [55.9533, -3.1883], "Senegal": [14.7167, -17.4677], "Serbia": [44.7866, 20.4489], "Slovenia": [46.0569, 14.5058], "Somalia": [2.0469, 45.3182], "Soviet Union": [55.7558, 37.6173], "Spain": [40.4168, -3.7038], "Sudan": [15.5007, 32.5599], "Sweden": [59.3293, 18.0686], "Switzerland": [46.948, 7.4474], "Tanzania": [-6.163, 35.7516], "The Gambia": [13.4549, -16.579], "United States": [38.9072, -77.0369], "Uruguay": [-34.9011, -56.1645], "Uzbekistan": [41.2995, 69.2401], "Wales": [51.4816, -3.1791], "Zambia": [-15.4167, 28.2833] };
+    </script>
+
+    <!-- Main Logic Script -->
+    <script>
+        // ISO mappings dictionary for team flags
+        const teamIsoCodes = {
+            'Algeria': 'dz', 'Argentina': 'ar', 'Australia': 'au', 'Belgium': 'be',
+            'Bosnia and Herzegovina': 'ba', 'Cabo Verde': 'cv', 'Canada': 'ca', 'Croatia': 'hr',
+            'Curaçao': 'cw', "Côte d'Ivoire": 'ci', 'DR Congo': 'cd', 'Ecuador': 'ec',
+            'Egypt': 'eg', 'England': 'gb-eng', 'France': 'fr', 'Germany': 'de',
+            'Ghana': 'gh', 'Haiti': 'ht', 'Iran': 'ir', 'Iraq': 'iq', 'Japan': 'jp',
+            'Jordan': 'jo', 'Mexico': 'mx', 'Morocco': 'ma', 'Netherlands': 'nl',
+            'New Zealand': 'nz', 'Norway': 'no', 'Paraguay': 'py', 'Portugal': 'pt',
+            'Qatar': 'qa', 'Scotland': 'gb-sct', 'Senegal': 'sn', 'South Korea': 'kr',
+            'Spain': 'es', 'Sweden': 'se', 'Switzerland': 'ch', 'Tunisia': 'tn', 'Turkey': 'tr',
+            'United States': 'us', 'Uruguay': 'uy', 'Uzbekistan': 'uz',
+            'FR Yugoslavia': 'rs', 'Zambia': 'zm', 'Italy': 'it', 'French Guiana': 'gf',
+            'Denmark': 'dk', 'Soviet Union': 'ru', 'Kenya': 'ke', 'Serbia': 'rs',
+            'Isle of Man': 'im', 'Guinea': 'gn', 'Republic of the Congo': 'cg', 'Nigeria': 'ng',
+            'Slovenia': 'si', 'Ireland': 'ie', 'Cameroon': 'cm', 'Austria': 'at',
+            'Sudan': 'sd', 'Somalia': 'so', 'The Gambia': 'gm', 'Wales': 'gb-wls',
+            'Brazil': 'br', 'Tanzania': 'tz', 'Saudi Arabia': 'sa', 'Colombia': 'co',
+            'Burkina Faso': 'bf'
+        };
+
+        // Set up globals
+        let map;
+        let activePreset = 'global';
+        let viewMode = 'squads'; // 'squads' (importers) or 'origins' (exporters)
+        let selectedEntity = null; // { type: 'squad'|'origin'|'player', name: string }
+        let drawerState = 'collapsed'; // 'collapsed', 'half', 'expanded'
+
+        // Helper to swap [lat, lng] to [lng, lat] for MapLibre
+        function getHubCoords(teamName) {
+            const coords = nationalTeamHubs[teamName];
+            return coords ? [coords[1], coords[0]] : null;
+        }
+
+        function getCentroidCoords(countryName) {
+            const coords = countryCentroids[countryName];
+            return coords ? [coords[1], coords[0]] : null;
+        }
+
+        // Helper to generate flag image tag dynamically
+        function getFlagTag(teamName) {
+            const code = teamIsoCodes[teamName];
+            return code ? `<img src="https://flagcdn.com/16x12/${code}.png" class="inline-block mr-1.5 align-middle shadow-sm rounded-sm" alt="" />` : '';
+        }
+
+        // Helper to remove duplicate country suffix from birth town names
+        function cleanTownName(town, country) {
+            if (!town) return '';
+            let clean = town.trim();
+            const countryTrimmed = country.trim();
+
+            const townNotSpecifiedRegex = new RegExp(`^${countryTrimmed}\\s*\\(town not specified\\)$`, 'i');
+            if (townNotSpecifiedRegex.test(clean)) {
+                return "Town not specified";
+            }
+
+            const escapedCountry = countryTrimmed.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const endCountryRegex = new RegExp(`[,\\s-]*${escapedCountry}[.\\s]*$`, 'i');
+            if (endCountryRegex.test(clean)) {
+                clean = clean.replace(endCountryRegex, '');
+            }
+
+            clean = clean.trim().replace(/,$/, '').trim();
+            if (!clean || clean.toLowerCase() === countryTrimmed.toLowerCase()) {
+                return '';
+            }
+            return clean;
+        }
+
+        // Geodesic Great Circle Line Interpolation
+        function interpolateGreatCircle(p1, p2, segments = 60) {
+            let lng1 = p1[0];
+            let lat1 = p1[1] * Math.PI / 180;
+            let lng2 = p2[0];
+            let lat2 = p2[1] * Math.PI / 180;
+
+            // Handle antimeridian wrap: choose shortest path
+            if (Math.abs(lng2 - lng1) > 180) {
+                if (lng2 > lng1) {
+                    lng2 -= 360;
+                } else {
+                    lng2 += 360;
+                }
+            }
+
+            const lng1Rad = lng1 * Math.PI / 180;
+            const lng2Rad = lng2 * Math.PI / 180;
+
+            const d = 2 * Math.asin(Math.sqrt(
+                Math.pow(Math.sin((lat1 - lat2) / 2), 2) +
+                Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin((lng1Rad - lng2Rad) / 2), 2)
+            ));
+
+            if (d === 0) return [[p1[0], p1[1]]];
+
+            const coords = [];
+            for (let i = 0; i <= segments; i++) {
+                const f = i / segments;
+                const A = Math.sin((1 - f) * d) / Math.sin(d);
+                const B = Math.sin(f * d) / Math.sin(d);
+
+                const x = A * Math.cos(lat1) * Math.cos(lng1Rad) + B * Math.cos(lat2) * Math.cos(lng2Rad);
+                const y = A * Math.cos(lat1) * Math.sin(lng1Rad) + B * Math.cos(lat2) * Math.sin(lng2Rad);
+                const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+
+                const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
+                const lng = Math.atan2(y, x);
+
+                coords.push([lng * 180 / Math.PI, lat * 180 / Math.PI]);
+            }
+            return coords;
+        }
+
+        // Initialize Map
+        function initMap() {
+            map = new maplibregl.Map({
+                container: 'map',
+                style: {
+                    version: 8,
+                    sources: {
+                        'carto-light': {
+                            type: 'raster',
+                            tiles: [
+                                'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                                'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                                'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                                'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+                            ],
+                            tileSize: 256,
+                            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                        }
+                    },
+                    layers: [
+                        {
+                            id: 'carto-light-layer',
+                            type: 'raster',
+                            source: 'carto-light',
+                            minzoom: 0,
+                            maxzoom: 18
+                        }
+                    ]
+                },
+                center: [10, 20],
+                zoom: 1.5,
+                minZoom: 1.1,
+                maxZoom: 10,
+                cooperativeGestures: true // Mobile scroll protection
+            });
+
+            // Controls
+            map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+            map.on('load', () => {
+                setupMapSources();
+                setupMapLayers();
+                setupMapEvents();
+
+                // Trigger initial render
+                selectPreset('global');
+            });
+        }
+
+        // Group players into aggregated view properties
+        function getAggregatedData() {
+            const squads = {};
+            const origins = {};
+
+            PLAYERS_DATA.forEach(p => {
+                // Importers aggregation
+                const t = p['National Team'];
+                if (!squads[t]) {
+                    squads[t] = { country: t, count: 0, coords: getHubCoords(t), players: [] };
+                }
+                squads[t].count++;
+                squads[t].players.push(p);
+
+                // Exporters aggregation
+                const o = p['Birth country'];
+                if (!origins[o]) {
+                    origins[o] = { country: o, count: 0, coords: getCentroidCoords(o), players: [] };
+                }
+                origins[o].count++;
+                origins[o].players.push(p);
+            });
+
+            return { squads, origins };
+        }
+
+        // Setup Map Sources
+        function setupMapSources() {
+            const { squads, origins } = getAggregatedData();
+
+            // 1. Squad Nodes GeoJSON
+            const squadsFeatures = Object.values(squads)
+                .filter(s => s.coords !== null)
+                .map(s => ({
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: s.coords },
+                    properties: { country: s.country, count: s.count, type: 'squad' }
+                }));
+
+            map.addSource('squads-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: squadsFeatures }
+            });
+
+            // 2. Origins Nodes GeoJSON
+            const originsFeatures = Object.values(origins)
+                .filter(o => o.coords !== null)
+                .map(o => ({
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: o.coords },
+                    properties: { country: o.country, count: o.count, type: 'origin' }
+                }));
+
+            map.addSource('origins-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: originsFeatures }
+            });
+
+            // 3. Migration Paths GeoJSON (Interpolated Lines)
+            const linesFeatures = PLAYERS_DATA.map((p, idx) => {
+                const start = [p.Longitude, p.Latitude];
+                const end = getHubCoords(p['National Team']);
+
+                if (!start[0] || !start[1] || !end) return null;
+
+                const arc = interpolateGreatCircle(start, end);
+
+                return {
+                    type: 'Feature',
+                    geometry: { type: 'LineString', coordinates: arc },
+                    properties: {
+                        id: idx,
+                        name: p.name,
+                        pos: p.Pos,
+                        club: p.Club,
+                        group: p.Group,
+                        birthTown: p['Birth town'],
+                        birthCountry: p['Birth country'],
+                        nationalTeam: p['National Team']
+                    }
+                };
+            }).filter(f => f !== null);
+
+            map.addSource('migration-paths-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: linesFeatures },
+                lineMetrics: true // Required for beautiful line-gradient rendering
+            });
+
+            // 4. Selected Path Source (glowing line overlay on top)
+            map.addSource('selected-path-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+
+            // 5. Birthplaces details Source (active when a country is selected)
+            map.addSource('birth-towns-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+
+            // 6. Centroid halo rings (active highlight marker)
+            map.addSource('highlighted-node-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+        }
+
+        // Setup Map Layers
+        function setupMapLayers() {
+            // 1. Migration paths (lines) - Rendered beneath country nodes
+            map.addLayer({
+                id: 'migration-paths-layer',
+                type: 'line',
+                source: 'migration-paths-source',
+                layout: {
+                    'line-cap': 'round',
+                    'line-join': 'round'
+                },
+                paint: {
+                    'line-width': 1.2,
+                    'line-opacity': 0.24,
+                    'line-gradient': [
+                        'interpolate',
+                        ['linear'],
+                        ['line-progress'],
+                        0.0, 'rgba(239, 68, 68, 0.25)', // stark red with slight transparency at birthplace
+                        1.0, 'rgba(220, 38, 38, 0.95)'  // solid stark red at squad hub
+                    ]
+                }
+            });
+
+            // 2. Active highlighted single player path layer
+            map.addLayer({
+                id: 'selected-path-layer',
+                type: 'line',
+                source: 'selected-path-source',
+                layout: {
+                    'line-cap': 'round',
+                    'line-join': 'round'
+                },
+                paint: {
+                    'line-width': 3.0,
+                    'line-color': '#991b1b', // deep premium crimson
+                    'line-opacity': 0.95
+                }
+            });
+
+            // 3. Highlighted Node Circle Halo (Rings)
+            map.addLayer({
+                id: 'highlighted-node-layer',
+                type: 'circle',
+                source: 'highlighted-node-source',
+                paint: {
+                    'circle-radius': 18,
+                    'circle-color': '#991b1b',
+                    'circle-opacity': 0.25,
+                    'circle-stroke-width': 1.5,
+                    'circle-stroke-color': '#991b1b'
+                }
+            });
+
+            // 4. Squad Circles (Importers)
+            map.addLayer({
+                id: 'squads-layer',
+                type: 'circle',
+                source: 'squads-source',
+                paint: {
+                    // Proportional sizing: min count 1 -> 6px, max count 25 -> 24px
+                    'circle-radius': [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'count'],
+                        1, 6,
+                        25, 24
+                    ],
+                    'circle-color': '#0f172a', // Deep Slate/Navy
+                    'circle-opacity': 0.75,
+                    'circle-stroke-width': 1.5,
+                    'circle-stroke-color': '#faf8f5'
+                }
+            });
+
+            // 5. Squad labels inside circles (count)
+            map.addLayer({
+                id: 'squads-text-layer',
+                type: 'symbol',
+                source: 'squads-source',
+                layout: {
+                    'text-field': ['get', 'count'],
+                    'text-size': 9,
+                    'text-offset': [0, 0],
+                    'text-justify': 'center'
+                },
+                paint: {
+                    'text-color': '#faf8f5',
+                    'text-opacity': [
+                        'case',
+                        ['>=', ['get', 'count'], 3], 1.0,
+                        0.0
+                    ]
+                }
+            });
+
+            // 6. Origins Circles (Exporters)
+            map.addLayer({
+                id: 'origins-layer',
+                type: 'circle',
+                source: 'origins-source',
+                paint: {
+                    // Proportional sizing: min count 1 -> 6px, max count 76 -> 32px
+                    'circle-radius': [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'count'],
+                        1, 6,
+                        76, 32
+                    ],
+                    'circle-color': '#e07a5f', // Terracotta Coral
+                    'circle-opacity': 0.75,
+                    'circle-stroke-width': 1.5,
+                    'circle-stroke-color': '#faf8f5'
+                }
+            });
+
+            // 7. Origins labels inside circles (count)
+            map.addLayer({
+                id: 'origins-text-layer',
+                type: 'symbol',
+                source: 'origins-source',
+                layout: {
+                    'text-field': ['get', 'count'],
+                    'text-size': 9,
+                    'text-offset': [0, 0],
+                    'text-justify': 'center'
+                },
+                paint: {
+                    'text-color': '#faf8f5',
+                    'text-opacity': [
+                        'case',
+                        ['>=', ['get', 'count'], 3], 1.0,
+                        0.0
+                    ]
+                }
+            });
+
+            // 8. Individual player Birth Towns (small dots when a country node is selected)
+            map.addLayer({
+                id: 'birth-towns-layer',
+                type: 'circle',
+                source: 'birth-towns-source',
+                paint: {
+                    'circle-radius': 5,
+                    'circle-color': '#991b1b',
+                    'circle-stroke-width': 1.5,
+                    'circle-stroke-color': '#faf8f5'
+                }
+            });
+        }
+
+        // Setup Map Interactions & Events
+        function setupMapEvents() {
+            const interactiveLayers = ['squads-layer', 'origins-layer', 'birth-towns-layer', 'migration-paths-layer'];
+
+            // Pointer cursor on hover
+            interactiveLayers.forEach(lyr => {
+                map.on('mouseenter', lyr, () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+                map.on('mouseleave', lyr, () => {
+                    map.getCanvas().style.cursor = '';
+                });
+            });
+
+            // Clicks on Squads circles
+            map.on('click', 'squads-layer', (e) => {
+                const feat = e.features[0];
+                selectCountry(feat.properties.country, 'squad');
+            });
+
+            // Clicks on Origins circles
+            map.on('click', 'origins-layer', (e) => {
+                const feat = e.features[0];
+                selectCountry(feat.properties.country, 'origin');
+            });
+
+            // Clicks on Birth town circles
+            map.on('click', 'birth-towns-layer', (e) => {
+                const feat = e.features[0];
+                const props = feat.properties;
+                const player = PLAYERS_DATA.find(p => p.name === props.name);
+                if (player) selectPlayer(player);
+            });
+
+            // Clicks on migration lines
+            map.on('click', 'migration-paths-layer', (e) => {
+                const feat = e.features[0];
+                const player = PLAYERS_DATA[feat.properties.id];
+                if (player) selectPlayer(player);
+            });
+
+            // Desktop Hover Tooltips (with flags)
+            map.on('mousemove', (e) => {
+                if (window.innerWidth < 700) return; // Touch on mobile, no hover tooltips
+
+                const hoverFeats = map.queryRenderedFeatures(e.point, {
+                    layers: ['squads-layer', 'origins-layer', 'birth-towns-layer', 'migration-paths-layer']
+                });
+
+                const tooltip = document.getElementById('tooltip');
+                if (hoverFeats.length > 0) {
+                    const f = hoverFeats[0];
+                    tooltip.classList.remove('hidden');
+                    tooltip.style.left = (e.originalEvent.clientX + 10) + 'px';
+                    tooltip.style.top = (e.originalEvent.clientY + 12) + 'px';
+
+                    let content = '';
+                    if (f.layer.id === 'squads-layer') {
+                        const flag = getFlagTag(f.properties.country);
+                        content = `<strong>${flag}${f.properties.country}</strong><br>${f.properties.count} foreign-born players`;
+                    } else if (f.layer.id === 'origins-layer') {
+                        const flag = getFlagTag(f.properties.country);
+                        content = `<strong>Born in ${flag}${f.properties.country}</strong><br>${f.properties.count} players`;
+                    } else if (f.layer.id === 'birth-towns-layer') {
+                        const flag = getFlagTag(f.properties.birthCountry);
+                        const cleanTown = cleanTownName(f.properties.birthTown, f.properties.birthCountry);
+                        content = `<strong>${f.properties.name}</strong> (${f.properties.pos})<br>Born in ${cleanTown ? cleanTown + ', ' : ''}${flag}${f.properties.birthCountry}`;
+                    } else if (f.layer.id === 'migration-paths-layer') {
+                        const startFlag = getFlagTag(f.properties.birthCountry);
+                        const flag = getFlagTag(f.properties.nationalTeam);
+                        content = `<strong>${f.properties.name}</strong> (${f.properties.pos})<br>${startFlag}${f.properties.birthCountry} &rarr; ${flag}${f.properties.nationalTeam}`;
+                    }
+                    tooltip.innerHTML = content;
+                } else {
+                    tooltip.classList.add('hidden');
+                }
+            });
+
+            map.on('mouseleave', 'squads-layer', () => { document.getElementById('tooltip').classList.add('hidden'); });
+            map.on('mouseleave', 'origins-layer', () => { document.getElementById('tooltip').classList.add('hidden'); });
+            map.on('mouseleave', 'birth-towns-layer', () => { document.getElementById('tooltip').classList.add('hidden'); });
+            map.on('mouseleave', 'migration-paths-layer', () => { document.getElementById('tooltip').classList.add('hidden'); });
+        }
+
+        // Set active preset beats
+        function selectPreset(preset) {
+            activePreset = preset;
+            selectedEntity = null;
+
+            // Clear selections on map
+            map.getSource('selected-path-source').setData({ type: 'FeatureCollection', features: [] });
+            map.getSource('birth-towns-source').setData({ type: 'FeatureCollection', features: [] });
+            map.getSource('highlighted-node-source').setData({ type: 'FeatureCollection', features: [] });
+
+            // Update preset buttons styling (Desktop)
+            const buttons = ['preset-global', 'preset-factories'];
+            buttons.forEach(id => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                if (id === `preset-${preset}`) {
+                    btn.classList.add('border-brand-navy', 'bg-brand-navy', 'text-[#faf8f5]');
+                    btn.classList.remove('border-brand-borderMuted', 'text-brand-navy');
+                } else {
+                    btn.classList.remove('border-brand-navy', 'bg-brand-navy', 'text-[#faf8f5]');
+                    btn.classList.add('border-brand-borderMuted', 'text-brand-navy');
+                }
+            });
+
+            // Update preset buttons styling (Mobile)
+            const mButtons = ['m-preset-global', 'm-preset-factories'];
+            mButtons.forEach(id => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                if (id === `m-preset-${preset}`) {
+                    btn.classList.add('border-brand-navy', 'bg-brand-navy', 'text-[#faf8f5]');
+                    btn.classList.remove('border-brand-borderMuted', 'text-brand-navy');
+                } else {
+                    btn.classList.remove('border-brand-navy', 'bg-brand-navy', 'text-[#faf8f5]');
+                    btn.classList.add('border-brand-borderMuted', 'text-brand-navy');
+                }
+            });
+
+            // Reset Search input
+            document.getElementById('desktop-search').value = '';
+            document.getElementById('mobile-search').value = '';
+            document.getElementById('desktop-search-clear').classList.add('hidden');
+            document.getElementById('mobile-search-clear').classList.add('hidden');
+
+            if (preset === 'global') {
+                setViewMode('squads', false);
+                map.flyTo({ center: [12, 18], zoom: 1.5, speed: 0.8 });
+                map.setPaintProperty('migration-paths-layer', 'line-opacity', 0.24);
+                renderIntroPanel();
+            }
+            else if (preset === 'factories') {
+                setViewMode('origins', false);
+                map.flyTo({ center: [8, 48], zoom: 4.0, speed: 0.8 });
+
+                // Highlight paths exported from FR, NL, DE
+                map.setPaintProperty('migration-paths-layer', 'line-opacity', [
+                    'case',
+                    ['in', ['get', 'birthCountry'], ['literal', ['France', 'Netherlands', 'Germany']]], 0.65,
+                    0.05
+                ]);
+                renderPresetPanel('factories');
+            }
+
+            setDrawerHeight('collapsed');
+        }
+
+        // Switch View Modes: Squads (importers) vs Origins (exporters)
+        function setViewMode(mode, resetSelection = true) {
+            viewMode = mode;
+
+            if (map && map.getLayer('squads-layer')) {
+                if (mode === 'squads') {
+                    map.setLayoutProperty('squads-layer', 'visibility', 'visible');
+                    map.setLayoutProperty('squads-text-layer', 'visibility', 'visible');
+                    map.setLayoutProperty('origins-layer', 'visibility', 'none');
+                    map.setLayoutProperty('origins-text-layer', 'visibility', 'none');
+                } else {
+                    map.setLayoutProperty('squads-layer', 'visibility', 'none');
+                    map.setLayoutProperty('squads-text-layer', 'visibility', 'none');
+                    map.setLayoutProperty('origins-layer', 'visibility', 'visible');
+                    map.setLayoutProperty('origins-text-layer', 'visibility', 'visible');
+                }
+            }
+
+            if (resetSelection) {
+                selectedEntity = null;
+                map.getSource('selected-path-source').setData({ type: 'FeatureCollection', features: [] });
+                map.getSource('birth-towns-source').setData({ type: 'FeatureCollection', features: [] });
+                map.getSource('highlighted-node-source').setData({ type: 'FeatureCollection', features: [] });
+                map.setPaintProperty('migration-paths-layer', 'line-opacity', 0.24);
+                renderIntroPanel();
+                setDrawerHeight('collapsed');
+            }
+        }
+
+        // Select specific country node (Squad or Origin)
+        function selectCountry(countryName, type) {
+            selectedEntity = { type: type, name: countryName };
+            activePreset = null;
+
+            // Remove presets highlight styling
+            ['preset-global', 'preset-factories'].forEach(id => {
+                document.getElementById(id).className = "px-2.5 py-2 text-xs font-semibold text-center border rounded-lg transition-all duration-200 border-brand-borderMuted text-brand-navy hover:bg-[#faf8f5]";
+            });
+            ['m-preset-global', 'm-preset-factories'].forEach(id => {
+                document.getElementById(id).className = "py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-borderMuted text-brand-navy";
+            });
+
+            const hubCoords = getHubCoords(countryName);
+            const centroidCoords = getCentroidCoords(countryName);
+
+            // 1. Center map on node
+            if (type === 'squad' && hubCoords) {
+                map.flyTo({ center: hubCoords, zoom: 4.2, speed: 0.8 });
+                // Highlight circle ring
+                map.getSource('highlighted-node-source').setData({
+                    type: 'FeatureCollection',
+                    features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: hubCoords } }]
+                });
+            } else if (type === 'origin' && centroidCoords) {
+                map.flyTo({ center: centroidCoords, zoom: 4.2, speed: 0.8 });
+                // Highlight circle ring
+                map.getSource('highlighted-node-source').setData({
+                    type: 'FeatureCollection',
+                    features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: centroidCoords } }]
+                });
+            }
+
+            // 2. Filter migration paths: highlight selected country paths, dim others
+            if (type === 'squad') {
+                map.setPaintProperty('migration-paths-layer', 'line-opacity', [
+                    'case',
+                    ['==', ['get', 'nationalTeam'], countryName], 0.70,
+                    0.05
+                ]);
+            } else {
+                map.setPaintProperty('migration-paths-layer', 'line-opacity', [
+                    'case',
+                    ['==', ['get', 'birthCountry'], countryName], 0.70,
+                    0.05
+                ]);
+            }
+
+            // 3. Clear selected player glowing path line
+            map.getSource('selected-path-source').setData({ type: 'FeatureCollection', features: [] });
+
+            // 4. Draw player birth towns as small active dots
+            const filteredPlayers = PLAYERS_DATA.filter(p =>
+                (type === 'squad' && p['National Team'] === countryName) ||
+                (type === 'origin' && p['Birth country'] === countryName)
+            );
+
+            const birthTownFeatures = filteredPlayers.map(p => ({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [p.Longitude, p.Latitude] },
+                properties: { name: p.name, pos: p.Pos, club: p.Club, birthTown: p['Birth town'], birthCountry: p['Birth country'] }
+            }));
+
+            map.getSource('birth-towns-source').setData({
+                type: 'FeatureCollection',
+                features: birthTownFeatures
+            });
+
+            // 5. Render list and open Mobile sheet
+            renderCountryPanel(countryName, type, filteredPlayers);
+            setDrawerHeight('half');
+        }
+
+        // Select specific Player
+        function selectPlayer(player) {
+            selectedEntity = { type: 'player', name: player.name };
+            activePreset = null;
+
+            // Remove presets highlight styling
+            ['m-preset-global', 'm-preset-factories'].forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) btn.className = "py-1 px-1 text-[9px] font-bold text-center border rounded-md border-brand-borderMuted text-brand-navy";
+            });
+
+            // 1. Plot highlighted single glowing great circle path
+            const start = [player.Longitude, player.Latitude];
+            const end = getHubCoords(player['National Team']);
+            if (start[0] && start[1] && end) {
+                const arc = interpolateGreatCircle(start, end);
+                map.getSource('selected-path-source').setData({
+                    type: 'Feature',
+                    geometry: { type: 'LineString', coordinates: arc },
+                    properties: {}
+                });
+
+                // Fit map screen bounds to contain both points in the arc
+                fitBoundsToCoordinates(start, end);
+            }
+
+            // 2. Set halo circles at birth and destination
+            const startPoint = { type: 'Feature', geometry: { type: 'Point', coordinates: start } };
+            const endPoint = { type: 'Feature', geometry: { type: 'Point', coordinates: end } };
+            map.getSource('highlighted-node-source').setData({
+                type: 'FeatureCollection',
+                features: [startPoint, endPoint]
+            });
+
+            // 3. Draw teammates path lines with medium visibility, others dark dim
+            map.setPaintProperty('migration-paths-layer', 'line-opacity', [
+                'case',
+                ['==', ['get', 'nationalTeam'], player['National Team']], 0.60,
+                0.03
+            ]);
+
+            // Draw birth towns of teammates
+            const teammates = PLAYERS_DATA.filter(p => p['National Team'] === player['National Team']);
+            const birthTownFeatures = teammates.map(p => ({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [p.Longitude, p.Latitude] },
+                properties: { name: p.name, pos: p.Pos, club: p.Club, birthTown: p['Birth town'], birthCountry: p['Birth country'] }
+            }));
+            map.getSource('birth-towns-source').setData({ type: 'FeatureCollection', features: birthTownFeatures });
+
+            // 4. Render details card and open mobile sheet
+            renderPlayerPanel(player);
+            setDrawerHeight('half');
+        }
+
+        // Fit map viewport to encompass coordinates with padding
+        function fitBoundsToCoordinates(p1, p2) {
+            const lats = [p1[1], p2[1]];
+            const lngs = [p1[0], p2[0]];
+
+            let minLng, maxLng;
+            if (Math.abs(lngs[0] - lngs[1]) > 180) {
+                // Coordinates wrap around, use the interpolated path nodes coordinates boundary
+                const arc = interpolateGreatCircle(p1, p2, 10);
+                const arcLngs = arc.map(c => c[0]);
+                minLng = Math.min(...arcLngs);
+                maxLng = Math.max(...arcLngs);
+            } else {
+                minLng = Math.min(...lngs);
+                maxLng = Math.max(...lngs);
+            }
+
+            const minLat = Math.min(...lats);
+            const maxLat = Math.max(...lats);
+
+            const leftPadding = window.innerWidth < 700 ? 40 : 420;
+
+            map.fitBounds(
+                [[minLng, minLat], [maxLng, maxLat]],
+                {
+                    padding: { top: 90, bottom: 90, left: leftPadding, right: 50 },
+                    maxZoom: 5.5,
+                    duration: 1500
+                }
+            );
+        }
+
+        // Render Details Panels (Desktop & Mobile Drawer sync)
+        function renderIntroPanel() {
+            const { squads, origins } = getAggregatedData();
+
+            // Sort to display top stats
+            const topSquads = Object.values(squads).sort((a, b) => b.count - a.count).slice(0, 5);
+            const topOrigins = Object.values(origins).sort((a, b) => b.count - a.count).slice(0, 5);
+
+            const content = `
+                <div class="space-y-5">
+                    
+
+                    <!-- Small Dashboard Charts -->
+                    <div class="space-y-4">
+                        <!-- Importers -->
+                        <div>
+                            <span class="block text-[10px] uppercase font-bold tracking-widest text-[#2c3e50] mb-2">Top Teams with Foreign Born Players</span>
+                            <div class="space-y-2">
+                                ${topSquads.map(s => {
+                const flag = getFlagTag(s.country);
+                return `
+                                    <div class="group flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 p-1 rounded transition country-link" data-country-name="${s.country}" data-country-type="squad">
+                                        <span class="font-semibold text-brand-navy group-hover:text-brand-coral transition">${flag}${s.country}</span>
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-24 bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                                                <div class="bg-brand-navy h-full rounded-full" style="width: ${(s.count / 25) * 100}%"></div>
+                                            </div>
+                                            <span class="w-4 text-right font-bold text-slate-600">${s.count}</span>
+                                        </div>
+                                    </div>
+                                    `;
+            }).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Exporters -->
+                        <div>
+                            <span class="block text-[10px] uppercase font-bold tracking-widest text-[#b35a38] mb-2">Top birthplaces of the World Cup's foreign-born players</span>
+                            <div class="space-y-2">
+                                ${topOrigins.map(o => {
+                return `
+                                    <div class="group flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 p-1 rounded transition country-link" data-country-name="${o.country}" data-country-type="origin">
+                                        <span class="font-semibold text-brand-navy group-hover:text-brand-coral transition">${getFlagTag(o.country)}${o.country}</span>
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-24 bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                                                <div class="bg-brand-coral h-full rounded-full" style="width: ${(o.count / 76) * 100}%"></div>
+                                            </div>
+                                            <span class="w-4 text-right font-bold text-slate-600">${o.count}</span>
+                                        </div>
+                                    </div>
+                                    `;
+            }).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('desktop-details').innerHTML = content;
+            document.getElementById('mobile-details').innerHTML = content;
+        }
+
+        function renderPresetPanel(preset) {
+            let title = '';
+            let subtitle = '';
+            let description = '';
+            let listHtml = '';
+
+            if (preset === 'factories') {
+                title = "Western Europe's Talent Factories";
+                subtitle = "France, Netherlands, and Germany";
+                description = `
+                    Western Europe serves as a massive exporter of talent at this World Cup. 
+                    Collectively, 143 players born in <strong>France (76)</strong>, the <strong>Netherlands (42)</strong>, and <strong>Germany (25)</strong> 
+                    are representing countries outside their birthplaces.
+                    
+                `;
+
+                // Calculate top 10 exporters
+                const { origins } = getAggregatedData();
+                const topExporters = Object.values(origins)
+                    .sort((a, b) => b.count - a.count)
+                    .slice(0, 10);
+
+                listHtml = `
+                    <div class="pt-4 border-t border-[#e2e8f0]">
+                        <span class="block text-[10px] uppercase font-bold tracking-widest text-brand-textMuted mb-3">Top birthplaces of the World Cup’s foreign-born players</span>
+                        <div class="space-y-2 max-h-64 overflow-y-auto no-scrollbar pr-1">
+                            ${topExporters.map(o => {
+                    const flag = getFlagTag(o.country);
+                    return `
+                                <div class="group flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 p-1.5 rounded transition country-link border border-transparent hover:border-slate-100" data-country-name="${o.country}" data-country-type="origin">
+                                    <span class="font-semibold text-brand-navy group-hover:text-brand-coral transition">${flag}${o.country}</span>
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-20 bg-[#faf8f5] border border-slate-200 h-2.5 rounded-full overflow-hidden">
+                                            <div class="bg-brand-coral h-full rounded-full" style="width: ${(o.count / 76) * 100}%"></div>
+                                        </div>
+                                        <span class="w-4 text-right font-bold text-slate-600">${o.count}</span>
+                                    </div>
+                                </div>
+                                `;
+                }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            const content = `
+                <div class="space-y-4">
+                    <div>
+                        <h3 class="font-serif text-lg font-bold text-brand-navy">${title}</h3>
+                        <p class="text-xs text-brand-coral font-medium">${subtitle}</p>
+                        <p class="mt-2 text-xs text-slate-600 leading-relaxed">${description}</p>
+                    </div>
+                    ${listHtml}
+                </div>
+            `;
+
+            document.getElementById('desktop-details').innerHTML = content;
+            document.getElementById('mobile-details').innerHTML = content;
+        }
+
+        function renderCountryPanel(countryName, type, players) {
+            const isSquad = type === 'squad';
+            const title = countryName;
+            const subtitle = isSquad ? "National Squad" : "Birthplace";
+            const statText = isSquad
+                ? `<strong>${players.length} foreign-born players</strong> on the roster.`
+                : `<strong>${players.length} players born here</strong> representing other national teams.`;
+
+            // Prepend flag if country is a squad (importer) or origin (exporter)
+            const flag = getFlagTag(countryName);
+
+            const content = `
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-serif text-2xl font-bold text-brand-navy">${flag}${title}</h3>
+                                <p class="text-xs text-brand-coral font-medium uppercase tracking-wider">${subtitle}</p>
+                            </div>
+                            <button onclick="resetToGlobal()" class="text-xs text-slate-400 hover:text-brand-navy transition cursor-pointer">&times; Close</button>
+                        </div>
+                        <p class="mt-2 text-xs text-slate-600">${statText}</p>
+                    </div>
+
+                    <!-- Player list -->
+                    <div>
+                        <span class="block text-[10px] uppercase font-bold tracking-widest text-brand-textMuted mb-2">Player Roster</span>
+                        <div class="divide-y divide-[#e2e8f0] max-h-60 overflow-y-auto no-scrollbar border border-slate-100 rounded-lg bg-white">
+                            ${players.map(p => {
+                const flag = getFlagTag(p['National Team']);
+                return `
+                                <div class="player-row p-2.5 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-xs transition" data-player-name="${p.name}">
+                                    <div>
+                                        <div class="font-semibold text-brand-navy">${p.name}</div>
+                                        <div class="text-[10px] text-brand-textMuted">${p.Pos} | ${p.Club}</div>
+                                    </div>
+                                    <div class="text-right text-[10px]">
+                                        <span class="text-slate-400">${isSquad ? `Born in ${p['Birth town']}` : `Represents ${flag}${p['National Team']}`}</span>
+                                    </div>
+                                </div>
+                                `;
+            }).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('desktop-details').innerHTML = content;
+            document.getElementById('mobile-details').innerHTML = content;
+        }
+
+        function renderPlayerPanel(player) {
+            const flag = getFlagTag(player['National Team']);
+
+            const backButtonText = `&larr; Back to ${player['National Team']} Roster`;
+
+            const content = `
+                <div class="space-y-4">
+                    <button class="back-to-roster-btn text-[11px] font-semibold text-brand-coral hover:text-brand-navy transition cursor-pointer" data-team-name="${player['National Team']}">${backButtonText}</button>
+                    
+                    <div class="p-4 bg-white border border-[#e8e4db] rounded-xl shadow-sm">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-serif text-2xl font-bold text-brand-navy">${player.name}</h3>
+                                <div class="flex gap-2 items-center mt-1 text-[11px] font-medium text-brand-textMuted">
+                                    <span class="bg-slate-100 px-2 py-0.5 rounded">${player.Pos}</span>
+                                    <span>${player.Club}</span>
+                                    <span class="bg-[#f2edd5] text-[#b35a38] px-2 py-0.5 rounded">Group ${player.Group}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Migration details -->
+                        <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-700 leading-relaxed space-y-2">
+                            <p>
+                                <strong>Birthplace:</strong> ${(() => {
+                    const cleanTown = cleanTownName(player['Birth town'], player['Birth country']);
+                    return cleanTown
+                        ? `${cleanTown}, <strong>${getFlagTag(player['Birth country'])}${player['Birth country']}</strong>`
+                        : `<strong>${getFlagTag(player['Birth country'])}${player['Birth country']}</strong>`;
+                })()}.
+                            </p>
+                            <p>
+                                <strong>Playing for:</strong> <strong>${flag}${player['National Team']}</strong>.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('desktop-details').innerHTML = content;
+            document.getElementById('mobile-details').innerHTML = content;
+        }
+
+
+
+        // Select player helper by string name
+        function selectPlayerByName(playerName) {
+            const p = PLAYERS_DATA.find(x => x.name === playerName);
+            if (p) selectPlayer(p);
+        }
+
+        function resetToGlobal() {
+            selectPreset('global');
+        }
+
+        // Set Mobile drawer heights
+        function setDrawerHeight(state) {
+            const drawer = document.getElementById('mobile-drawer');
+            if (!drawer) return;
+            drawerState = state;
+            if (state === 'collapsed') {
+                drawer.style.height = '15vh';
+            } else if (state === 'half') {
+                drawer.style.height = '45vh';
+            } else if (state === 'expanded') {
+                drawer.style.height = '85vh';
+            }
+        }
+
+        // Mobile drawer drag handle click toggling cycle
+        document.getElementById('mobile-drawer-handle').addEventListener('click', () => {
+            if (drawerState === 'collapsed') {
+                setDrawerHeight(selectedEntity ? 'half' : 'expanded');
+            } else if (drawerState === 'half') {
+                setDrawerHeight('expanded');
+            } else {
+                setDrawerHeight(selectedEntity ? 'half' : 'collapsed');
+            }
+        });
+
+        // Setup Search and Autocomplete functionality
+        function setupSearch() {
+            const desktopInput = document.getElementById('desktop-search');
+            const mobileInput = document.getElementById('mobile-search');
+            const desktopResults = document.getElementById('desktop-search-results');
+            const mobileResults = document.getElementById('mobile-search-results');
+            const desktopClear = document.getElementById('desktop-search-clear');
+            const mobileClear = document.getElementById('mobile-search-clear');
+
+            function handleSearchInput(e, resultsBox, clearBtn) {
+                const query = e.target.value.toLowerCase().trim();
+
+                if (query === '') {
+                    resultsBox.innerHTML = '';
+                    resultsBox.classList.add('hidden');
+                    clearBtn.classList.add('hidden');
+                    return;
+                }
+
+                clearBtn.classList.remove('hidden');
+
+                const matchingPlayers = PLAYERS_DATA.filter(p => p.name.toLowerCase().includes(query)).slice(0, 5);
+
+                const squadsSet = new Set(PLAYERS_DATA.map(p => p['National Team']));
+                const matchingSquads = Array.from(squadsSet).filter(s => s.toLowerCase().includes(query)).slice(0, 3);
+
+                const originsSet = new Set(PLAYERS_DATA.map(p => p['Birth country']));
+                const matchingOrigins = Array.from(originsSet).filter(o => o.toLowerCase().includes(query)).slice(0, 3);
+
+                let html = '';
+
+                if (matchingSquads.length > 0) {
+                    html += `<div class="p-2 bg-slate-50 font-bold text-[10px] uppercase text-brand-textMuted tracking-wider">National Squads</div>`;
+                    matchingSquads.forEach(s => {
+                        const flag = getFlagTag(s);
+                        html += `<div class="p-2 hover:bg-slate-100 cursor-pointer font-semibold search-result-item" data-type="squad" data-value="${s}">${flag}${s} Squad</div>`;
+                    });
+                }
+
+                if (matchingOrigins.length > 0) {
+                    html += `<div class="p-2 bg-slate-50 font-bold text-[10px] uppercase text-brand-textMuted tracking-wider">Birth Countries</div>`;
+                    matchingOrigins.forEach(o => {
+                        const flag = getFlagTag(o);
+                        html += `<div class="p-2 hover:bg-slate-100 cursor-pointer font-semibold search-result-item" data-type="origin" data-value="${o}">Born in ${flag}${o}</div>`;
+                    });
+                }
+
+                if (matchingPlayers.length > 0) {
+                    html += `<div class="p-2 bg-slate-50 font-bold text-[10px] uppercase text-brand-textMuted tracking-wider">Players</div>`;
+                    matchingPlayers.forEach(p => {
+                        const flag = getFlagTag(p['National Team']);
+                        html += `<div class="p-2 hover:bg-slate-100 cursor-pointer flex justify-between search-result-item" data-type="player" data-value="${p.name}">
+                            <span>${p.name} <span class="text-slate-400 font-normal">(${p.Pos})</span></span>
+                            <span class="text-slate-400 font-normal">${flag}${p['National Team']}</span>
+                        </div>`;
+                    });
+                }
+
+                if (html === '') {
+                    html = `<div class="p-3 text-slate-400 text-center italic">No results found</div>`;
+                }
+
+                resultsBox.innerHTML = html;
+                resultsBox.classList.remove('hidden');
+            }
+
+            desktopInput.addEventListener('input', (e) => handleSearchInput(e, desktopResults, desktopClear));
+            mobileInput.addEventListener('input', (e) => handleSearchInput(e, mobileResults, mobileClear));
+
+            // Hide suggestions on outside clicks
+            document.addEventListener('click', (e) => {
+                if (!desktopInput.contains(e.target) && !desktopResults.contains(e.target)) {
+                    desktopResults.classList.add('hidden');
+                }
+                if (!mobileInput.contains(e.target) && !mobileResults.contains(e.target)) {
+                    mobileResults.classList.add('hidden');
+                }
+            });
+        }
+
+        function handleSearchSelect(type, val) {
+            document.getElementById('desktop-search-results').classList.add('hidden');
+            document.getElementById('mobile-search-results').classList.add('hidden');
+
+            if (type === 'squad') {
+                setViewMode('squads', false);
+                selectCountry(val, 'squad');
+            } else if (type === 'origin') {
+                setViewMode('origins', false);
+                selectCountry(val, 'origin');
+            } else if (type === 'player') {
+                selectPlayerByName(val);
+            }
+        }
+
+        function clearSearch() {
+            document.getElementById('desktop-search').value = '';
+            document.getElementById('mobile-search').value = '';
+            document.getElementById('desktop-search-results').classList.add('hidden');
+            document.getElementById('mobile-search-results').classList.add('hidden');
+            document.getElementById('desktop-search-clear').classList.add('hidden');
+            document.getElementById('mobile-search-clear').classList.add('hidden');
+            resetToGlobal();
+        }
+
+        // Sidebar Collapse / Expand Functionality
+        function toggleSidebar(collapse) {
+            const sidebar = document.getElementById('sidebar-wrapper');
+            const expandBtn = document.getElementById('sidebar-expand-btn');
+            const collapseBtn = document.getElementById('sidebar-collapse-btn');
+
+            if (collapse) {
+                sidebar.classList.add('sidebar-collapsed');
+                expandBtn.classList.remove('hidden');
+                collapseBtn.classList.add('hidden');
+            } else {
+                sidebar.classList.remove('sidebar-collapsed');
+                expandBtn.classList.add('hidden');
+                collapseBtn.classList.remove('hidden');
+            }
+
+            // Recalculate Map Canvas Dimensions
+            setTimeout(() => {
+                if (map) map.resize();
+            }, 310);
+        }
+
+        // Bind collapsible button events
+        document.getElementById('sidebar-collapse-btn').addEventListener('click', () => toggleSidebar(true));
+        document.getElementById('sidebar-expand-btn').addEventListener('click', () => toggleSidebar(false));
+
+        // Global Event Delegation for Dynamic Elements Clicks
+        document.addEventListener('click', (e) => {
+            // Player list row clicked
+            const playerRow = e.target.closest('.player-row');
+            if (playerRow) {
+                const playerName = playerRow.getAttribute('data-player-name');
+                selectPlayerByName(playerName);
+                return;
+            }
+
+            // Country link clicked
+            const countryLink = e.target.closest('.country-link');
+            if (countryLink) {
+                const countryName = countryLink.getAttribute('data-country-name');
+                const countryType = countryLink.getAttribute('data-country-type');
+                selectCountry(countryName, countryType);
+                return;
+            }
+
+            // Back button clicked
+            const backBtn = e.target.closest('.back-to-roster-btn');
+            if (backBtn) {
+                const teamName = backBtn.getAttribute('data-team-name');
+                selectCountry(teamName, 'squad');
+                return;
+            }
+
+            // Autocomplete search result item clicked
+            const searchItem = e.target.closest('.search-result-item');
+            if (searchItem) {
+                const type = searchItem.getAttribute('data-type');
+                const val = searchItem.getAttribute('data-value');
+                handleSearchSelect(type, val);
+                return;
+            }
+        });
+
+        // Handle resize layout updates
+        window.addEventListener('resize', () => {
+            if (map) {
+                map.resize();
+            }
+        });
+
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                if (map) map.resize();
+            }, 200);
+        });
+
+        // Bootstrap the application
+        initMap();
+        setupSearch();
+    </script>
+</body>
+
+</html>
