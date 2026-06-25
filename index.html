@@ -199,6 +199,13 @@
         <!-- ============================================ -->
         <aside id="sidebar-wrapper"
             class="desktop-only flex-col h-full bg-[#fcfbfa] border-r border-[#e8e4db] shadow-xl overflow-hidden w-[25vw] min-w-[280px] max-w-[380px] flex-shrink-0 relative">
+            <!-- Drag handle: resize the panel width (desktop analog of the mobile drawer) -->
+            <div id="sidebar-resize-handle"
+                class="hidden desktop:flex absolute top-0 right-0 w-2.5 h-full cursor-ew-resize z-30 items-center justify-end group"
+                style="touch-action: none;" role="separator" aria-orientation="vertical"
+                aria-label="Resize panel — drag left or right, or use arrow keys" tabindex="0">
+                <div class="w-1 h-12 rounded-full bg-[#e2e8f0] group-hover:bg-slate-400 group-active:bg-brand-coral transition-colors mr-[1px]"></div>
+            </div>
             <!-- Header Section -->
             <div class="p-6 border-b border-[#e8e4db] flex-shrink-0">
                 <div
@@ -1136,8 +1143,10 @@
 
         // Fade the aggregate count-circles during a selection so the grammar stands out
         function dimAggregates() {
-            ['squads-layer', 'origins-layer'].forEach(l => { if (map.getLayer(l)) map.setPaintProperty(l, 'circle-opacity', 0.10); });
-            ['squads-text-layer', 'origins-text-layer'].forEach(l => { if (map.getLayer(l)) map.setPaintProperty(l, 'text-opacity', 0); });
+            ['squads-layer', 'origins-layer'].forEach(l => { if (map.getLayer(l)) map.setPaintProperty(l, 'circle-opacity', 0.30); });
+            // Keep faint count labels on the larger context nodes so they stay identifiable
+            const op = ['case', ['>=', ['get', 'count'], 3], 0.45, 0.0];
+            ['squads-text-layer', 'origins-text-layer'].forEach(l => { if (map.getLayer(l)) map.setPaintProperty(l, 'text-opacity', op); });
         }
         function restoreAggregates() {
             ['squads-layer', 'origins-layer'].forEach(l => { if (map.getLayer(l)) map.setPaintProperty(l, 'circle-opacity', 0.75); });
@@ -1799,6 +1808,73 @@
         // Bind collapsible button events
         document.getElementById('sidebar-collapse-btn').addEventListener('click', () => toggleSidebar(true));
         document.getElementById('sidebar-expand-btn').addEventListener('click', () => toggleSidebar(false));
+
+        // ============================================================
+        // Desktop sidebar: drag the right edge to resize its width
+        // ============================================================
+        function initSidebarResize() {
+            const sidebar = document.getElementById('sidebar-wrapper');
+            const handle = document.getElementById('sidebar-resize-handle');
+            if (!sidebar || !handle) return;
+
+            const MIN = 260;
+            const maxW = () => Math.min(620, Math.round(window.innerWidth * 0.5));
+            // Inline min/max override the Tailwind constraints so drag has room
+            sidebar.style.minWidth = MIN + 'px';
+            sidebar.style.maxWidth = maxW() + 'px';
+
+            let dragging = false, startX = 0, startW = 0, rafPending = false;
+
+            function applyWidth(w) {
+                w = Math.max(MIN, Math.min(maxW(), w));
+                sidebar.style.width = w + 'px';
+                handle.setAttribute('aria-valuenow', Math.round(w));
+                if (!rafPending) {
+                    rafPending = true;
+                    requestAnimationFrame(() => { rafPending = false; if (map) map.resize(); });
+                }
+            }
+
+            handle.addEventListener('pointerdown', (e) => {
+                if (sidebar.classList.contains('sidebar-collapsed')) return; // no resize while collapsed
+                dragging = true;
+                startX = e.clientX;
+                startW = sidebar.getBoundingClientRect().width;
+                sidebar.style.transition = 'none';
+                document.body.style.cursor = 'ew-resize';
+                try { handle.setPointerCapture(e.pointerId); } catch (_) { }
+                e.preventDefault();
+            });
+            window.addEventListener('pointermove', (e) => {
+                if (!dragging) return;
+                applyWidth(startW + (e.clientX - startX));
+                if (e.cancelable) e.preventDefault();
+            }, { passive: false });
+            const endResize = (e) => {
+                if (!dragging) return;
+                dragging = false;
+                sidebar.style.transition = '';
+                document.body.style.cursor = '';
+                try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
+                if (map) map.resize();
+            };
+            window.addEventListener('pointerup', endResize);
+            window.addEventListener('pointercancel', endResize);
+
+            // Keyboard accessibility
+            handle.addEventListener('keydown', (e) => {
+                const cur = sidebar.getBoundingClientRect().width;
+                if (e.key === 'ArrowLeft') { applyWidth(cur - 24); e.preventDefault(); }
+                else if (e.key === 'ArrowRight') { applyWidth(cur + 24); e.preventDefault(); }
+            });
+
+            // Keep within bounds when the window resizes
+            window.addEventListener('resize', () => {
+                sidebar.style.maxWidth = maxW() + 'px';
+                if (sidebar.getBoundingClientRect().width > maxW()) applyWidth(maxW());
+            });
+        }
+        initSidebarResize();
 
         // Global Event Delegation for Dynamic Elements Clicks
         document.addEventListener('click', (e) => {
